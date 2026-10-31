@@ -15,7 +15,6 @@ web/.next/
 web/tsconfig.tsbuildinfo
 web/next-env.d.ts
 .vercel/
-web/public/demo-version.json
 *.local
 
 # development tools
