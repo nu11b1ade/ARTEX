@@ -92,7 +92,9 @@ docker compose up -d          # 拉取 nullblade/artex 镜像 + postgres
 
 镜像已含常用工具（ripgrep/curl/vim/npm/nmap…）；`./skills` 与 `./data` 以绑定挂载持久化。
 
-`.env` 中默认 `ARTEX_IMAGE=nullblade/artex`，`ARTEX_TAG=latest` 使用最新镜像，也可固定为 `v0.3.17`（完整镜像地址 `nullblade/artex:v0.3.17`）。镜像支持 `linux/amd64` 和 `linux/arm64`，Docker 会自动选择与宿主机匹配的架构，ARM64 Kali 无需自行编译。初次部署请修改 `POSTGRES_PASSWORD`；运行服务无需配置 Docker Hub 发布 Token。
+> 本仓库尚未发布 Docker 镜像时，`docker compose up -d` 会提示镜像不存在；请改用“方式四：从源码编译单二进制”，或等待维护者发布首个镜像后再走本方式。
+
+`.env` 中默认 `ARTEX_IMAGE=nullblade/artex`，`ARTEX_TAG=latest` 使用最新镜像，也可固定为 `v0.3.26`（完整镜像地址 `nullblade/artex:v0.3.26`）。镜像支持 `linux/amd64` 和 `linux/arm64`，Docker 会自动选择与宿主机匹配的架构，ARM64 Kali 无需自行编译。初次部署请修改 `POSTGRES_PASSWORD`；运行服务无需配置 Docker Hub 发布 Token。
 
 远程 MCP 可在系统设置中选择 `http`（Streamable HTTP）或 `sse`（旧版 SSE）。
 旧版 SSE 服务通常使用 `GET /sse` 建立事件流，再通过服务返回的
@@ -163,12 +165,14 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 ### 维护者：通过 GitHub Actions 发布在线更新
 
-发布工作流为 `.github/workflows/release.yml`。推送正式标签会触发构建，也可在 Actions → release → Run workflow 中输入已存在的标签重新执行失败的发布。标签必须是 `v主版本.次版本.修订号`，例如下例的 `v0.3.17`；后续版本必须高于用户正在运行的版本。
+> **迁移阶段不要推送标签。** 本仓库当前没有发布任何 Release 或 Docker 镜像；请先完成二次开发，并在 Settings → Secrets and variables → Actions 中配置好 Docker Hub 凭据，再按下面的流程发布。向本仓库推送任何 `v*` 标签都会直接触发 Release 和 Docker 发布。
+
+发布工作流为 `.github/workflows/release.yml`。推送正式标签会触发构建，也可在 Actions → release → Run workflow 中输入已存在的标签重新执行失败的发布。标签必须是 `v主版本.次版本.修订号`，例如下例的 `v0.3.26`；后续版本必须高于用户正在运行的版本。
 
 ```bash
 git push origin main
-git tag v0.3.17
-git push origin v0.3.17
+git tag v0.3.26        # 示例版本号，发布前替换为实际版本
+git push origin v0.3.26
 ```
 
 工作流固定标签对应的提交，用 Node.js 22 导出前端，按照 `go.mod` 指定的 Go 版本编译内嵌前端的五个平台程序，并生成 ZIP 与 `SHA256SUMS`。AMD64 和 ARM64 镜像分别在 GitHub 原生 runner 上构建，连接临时 PostgreSQL 验证程序启动、版本和内嵌前端；两种架构都通过后发布多架构镜像的版本标签与 `latest`。镜像发布成功后上传完整 ZIP 和校验文件，最后公开 Release。已公开的同版本不允许覆盖，应发布新标签。
@@ -202,10 +206,10 @@ docker compose logs --tail=50 artex
 ```bash
 # 在下载目录运行；先按 SHA256SUMS 核对下载的 ZIP，再解压。
 sha256sum --ignore-missing --check SHA256SUMS
-unzip artex-0.3.17-linux-arm64.zip
+unzip artex-0.3.26-linux-arm64.zip
 sudo docker stop artex-artex-1
 sudo docker cp artex-artex-1:/app/artex ./artex-before-migration
-sudo docker cp ./artex-0.3.17-linux-arm64/artex artex-artex-1:/app/artex
+sudo docker cp ./artex-0.3.26-linux-arm64/artex artex-artex-1:/app/artex
 sudo docker start artex-artex-1
 curl --fail http://127.0.0.1:8787/api/health
 ```
@@ -229,7 +233,7 @@ cd ARTEX
 ```bash
 cd ARTEX
 git pull                       # 更新 compose / 脚本（可选）
-# 指定版本：在 .env 设 ARTEX_TAG=v0.3.17；不设则用 latest
+# 指定版本：在 .env 设 ARTEX_TAG=v0.3.26；不设则用 latest
 docker compose pull artex
 docker compose up -d artex     # 换新镜像重启 → 自动迁移 schema
 docker image prune -f          # 清理旧镜像（可选）
@@ -366,7 +370,7 @@ server {
 
 ## 系统技术架构
 
-ARTEX 是一套 **LLM 多 agent 驱动的自主渗透系统**：Go 单体后端（内嵌 Next.js 前端）+ PostgreSQL，agent 能力由 [`norma`](https://github.com/Autumn-27/norma) SDK 提供（`agentcore` / `tool` / `permission` / `harness` / `memory` / `transcript`）。核心是**双图架构**，以及围绕它的两条自主性机制：**worker 间过程级信息交换**与 **planner 多轮共享 todolist 稳定攻击链路**。
+ARTEX 是一套 **LLM 多 agent 驱动的自主渗透系统**：Go 单体后端（内嵌 Next.js 前端）+ PostgreSQL，agent 能力由 [`norma`](https://github.com/nu11b1ade/Norma) SDK 提供（上游为 [Autumn-27/norma](https://github.com/Autumn-27/norma)，本仓库使用二次开发版本 `v0.4.3`；`agentcore` / `tool` / `permission` / `harness` / `memory` / `transcript`）。核心是**双图架构**，以及围绕它的两条自主性机制：**worker 间过程级信息交换**与 **planner 多轮共享 todolist 稳定攻击链路**。
 
 ### 总体分层
 
