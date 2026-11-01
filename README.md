@@ -90,7 +90,7 @@ docker compose up -d          # 拉取 nullblade/artex 镜像 + postgres
 # → http://localhost:8787
 ```
 
-镜像已含常用工具（ripgrep/curl/vim/npm/nmap…）；`./skills` 与 `./data` 以绑定挂载持久化。
+镜像已含常用工具（ripgrep/curl/vim/npm/nmap，以及 JDK 17 / JADX / Apktool / vulnx）；`./skills` 与 `./data` 以绑定挂载持久化。
 
 > 本仓库尚未发布 Docker 镜像时，`docker compose up -d` 会提示镜像不存在；请改用“方式四：从源码编译单二进制”，或等待维护者发布首个镜像后再走本方式。
 

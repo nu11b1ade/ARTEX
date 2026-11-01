@@ -12,11 +12,16 @@
 #   docker build -t artex:local .
 FROM python:3.12-slim-bookworm
 ARG TARGETARCH
+# Android 逆向 / CVE 查询工具版本（可用 --build-arg 覆盖）。
+ARG JADX_VERSION=1.5.6
+ARG APKTOOL_VERSION=3.0.3
+ARG VULNX_VERSION=2.0.2
 # 常用工具：ripgrep / curl / vim，加一批 recon 常备件（按需增删）。
 # Node 从 NodeSource 装 22.x，与前端构建使用的主版本一致。
+# openjdk-17-jre-headless 供 JADX / Apktool 使用。
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates ripgrep curl wget vim git jq unzip \
-      tzdata \
+      tzdata openjdk-17-jre-headless \
       dnsutils iputils-ping netcat-openbsd inetutils-telnet whois nmap \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
@@ -30,6 +35,42 @@ RUN npm install -g @playwright/mcp@latest @playwright/cli@latest playwright@late
     && playwright-cli --help \
     && playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
+# Android 逆向分析及 CVE 查询工具：JADX CLI / Apktool / vulnx。
+# vulnx 发布包按 TARGETARCH 选择 linux_amd64 / linux_arm64。
+RUN set -eux; \
+    \
+    # JADX CLI
+    mkdir -p /opt/jadx; \
+    curl -fL --retry 3 \
+      "https://github.com/skylot/jadx/releases/download/v${JADX_VERSION}/jadx-${JADX_VERSION}.zip" \
+      -o /tmp/jadx.zip; \
+    unzip -q /tmp/jadx.zip -d /opt/jadx; \
+    chmod +x /opt/jadx/bin/jadx; \
+    ln -s /opt/jadx/bin/jadx /usr/local/bin/jadx; \
+    \
+    # Apktool
+    mkdir -p /opt/apktool; \
+    curl -fL --retry 3 \
+      "https://github.com/iBotPeaches/Apktool/releases/download/v${APKTOOL_VERSION}/apktool_${APKTOOL_VERSION}.jar" \
+      -o /opt/apktool/apktool.jar; \
+    printf '#!/bin/sh\nexec java -jar /opt/apktool/apktool.jar "$@"\n' \
+      > /usr/local/bin/apktool; \
+    chmod +x /usr/local/bin/apktool; \
+    \
+    # ProjectDiscovery vulnx（适配 amd64/arm64）
+    curl -fL --retry 3 \
+      "https://github.com/projectdiscovery/vulnx/releases/download/v${VULNX_VERSION}/vulnx_${VULNX_VERSION}_linux_${TARGETARCH}.zip" \
+      -o /tmp/vulnx.zip; \
+    mkdir -p /tmp/vulnx; \
+    unzip -q /tmp/vulnx.zip -d /tmp/vulnx; \
+    install -m 755 /tmp/vulnx/vulnx /usr/local/bin/vulnx; \
+    \
+    # 清理并检查
+    rm -rf /tmp/jadx.zip /tmp/vulnx.zip /tmp/vulnx; \
+    java -version; \
+    jadx --version; \
+    apktool --version; \
+    vulnx version --disable-update-check
 WORKDIR /app
 ENV TZ=Asia/Shanghai
 # 预编译好的对应架构二进制（dist/amd64/artex 或 dist/arm64/artex）
