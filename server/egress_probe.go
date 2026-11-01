@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Autumn-27/artex/netprofile"
 	"github.com/Autumn-27/artex/traffic"
 )
 
@@ -285,7 +286,7 @@ func probeOne(ctx context.Context, client *http.Client, target string) (string, 
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "artex-egress-probe/1.0")
+	netprofile.Navigate(req)
 
 	resp, err := client.Do(req)
 	if err != nil {

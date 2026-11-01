@@ -25,6 +25,7 @@ import (
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/netprofile"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/skill"
 )
@@ -2073,6 +2074,12 @@ func (s *Server) pgListModels(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		httpReq.Header = c.hdr
+		// 模型列表只是连通性/配置校验，但也别让 net/http 默认的
+		// Go-http-client/1.1 成为平台指纹；显式头（Authorization 等）保持原样。
+		if httpReq.Header.Get("Accept") == "" {
+			httpReq.Header.Set("Accept", "application/json")
+		}
+		netprofile.Apply(httpReq)
 		resp, err := client.Do(httpReq)
 		if err != nil {
 			lastErr = "请求失败: " + err.Error()

@@ -3888,7 +3888,9 @@ func (s *Server) setReporterBrowserScreenshotVisibility(enabled bool) error {
 			// permission toggle, so the next reporter run gets a working browser
 			// instead of a deterministic Chromium sandbox error.
 			if enabled {
-				server.Args = encodeJSON(ensureBrowserMCPArgs(decodeStrSlice(server.Args), true))
+				args := ensureBrowserMCPArgs(decodeStrSlice(server.Args), true)
+				server.Args = encodeJSON(args)
+				server.Env = encodeJSON(ensureBrowserMCPClientProfile(s.m.dir, args, decodeStrMap(server.Env)))
 				server.Enabled = true
 				if _, err := s.m.pg.SaveMCP(server); err != nil {
 					return err
