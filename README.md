@@ -73,12 +73,13 @@ cd ARTEX
 ./install.sh
 ```
 
-脚本会：检测 / 自动安装 Docker → 让你选 **① 全部 Docker** 或 **② 本地编译运行**：
+脚本会：检测 / 自动安装 Docker → 让你选 **① 全部 Docker**、**② 本地编译运行** 或 **③ 生产部署（Host + Nginx HTTPS）**：
 
 - **① 全部 Docker**：填一个 Postgres 密码（可回车随机）→ 自动写 `.env` → `docker compose up -d`。
 - **② 本地运行**：选数据库（连已有 / 用 Docker 起一个）→ 生成 `config.json` → `go` 编译内嵌单二进制 → 启动。
+- **③ 生产部署**：Host 网络让 Agent 可自主监听动态端口；自动部署 Nginx、HTTPS 和首次访问即生效的 HTTP Basic Auth，ARTEX Web/API、流量代理与 PostgreSQL 只监听回环地址。
 
-装好后打开 **http://localhost:8787**（首次进入 `/setup` 设置管理员密码）。
+装好后打开 **http://localhost:8787**（首次进入 `/setup` 设置管理员密码）。生产部署则访问 **https://域名或服务器 IP**，先通过 Basic Auth，再完成 `/setup`。
 
 ### 方式二：Docker Compose（手动）
 
@@ -100,6 +101,75 @@ docker compose up -d          # 拉取 nullblade/artex 镜像 + postgres
 旧版 SSE 服务通常使用 `GET /sse` 建立事件流，再通过服务返回的
 `/message?sessionId=...` 接收 JSON-RPC 请求；配置时将 URL 填为 `/sse`，请求头按
 `Authorization=Bearer <token>` 填写。
+
+### 生产部署（Host 网络 + Nginx HTTPS）
+
+面向公网 / 长期运行的部署方式。与 Bridge 部署（`docker-compose.yml`）互斥：两者都会占用 80、443、8787、8788，切换前先在旧部署目录执行 `docker compose down`。
+
+```bash
+cd ARTEX
+./deploy.sh install        # 也可在 ./install.sh 菜单中选择 ③
+```
+
+安装流程会自动完成：
+
+1. 生成 / 补全 `.env`：PostgreSQL 密码、访问域名、HTTP Basic Auth 凭据，以及一个宿主空闲的 PostgreSQL 回环端口；
+2. 生成自签名证书（或导入已有证书），渲染 `deploy/nginx/site.conf`；
+3. 启动 `artex-host` 生产栈：PostgreSQL、ARTEX、Nginx 全部使用 Docker Host 网络；
+4. 等待健康检查通过，验证匿名访问确实返回 401，将访问地址与 Basic Auth 凭据写入 `deploy/state/initial-credentials.txt`（权限 600）。
+
+#### 端口与暴露面
+
+| 端口 | 监听地址 | 用途 |
+| --- | --- | --- |
+| 80 / 443 | `0.0.0.0`（公网） | Nginx 统一入口；80 跳转 443 |
+| 8787 | `127.0.0.1` | ARTEX Web/API（仅 Nginx 访问） |
+| 8788 | `127.0.0.1` | 流量录制代理（不对外） |
+| `ARTEX_PG_PORT` | `127.0.0.1` | PostgreSQL（不对外） |
+
+Host 网络让容器内的 Agent 可以自主监听动态端口（反弹 shell、临时 HTTP 服务、监听器等），无需事先在 Compose 里声明 `ports`。这些由 Agent 启动的监听端口不归部署脚本管理，公网可达性取决于进程绑定地址与主机防火墙；建议用云安全组 / ufw 只放行 80、443。
+
+#### HTTPS 证书
+
+- 默认自签名证书：SAN 包含 `localhost`、`127.0.0.1`、配置的域名和检测到的 IPv4，浏览器会提示不受信任。`ARTEX_DOMAIN` 也可以填 IPv4（如公网/NAT 地址），此时会写入 IP SAN。
+- 使用受信证书：将证书和私钥放到 `deploy/nginx/certs/fullchain.pem`、`privkey.pem`，删除同目录下的 `.self-signed` 标记，然后执行 `./deploy.sh update`。
+- 80 端口保留了 `/.well-known/acme-challenge/`，webroot 是 `deploy/nginx/webroot/`。例如：
+  ```bash
+  sudo certbot certonly --webroot -w "$PWD/deploy/nginx/webroot" -d example.com
+  sudo cp /etc/letsencrypt/live/example.com/fullchain.pem deploy/nginx/certs/fullchain.pem
+  sudo cp /etc/letsencrypt/live/example.com/privkey.pem   deploy/nginx/certs/privkey.pem
+  rm -f deploy/nginx/certs/.self-signed
+  ./deploy.sh update
+  ```
+
+#### HTTP Basic Auth
+
+- 生产部署首次启动时用 `.env` 的 `ARTEX_BASIC_AUTH_USER` / `ARTEX_BASIC_AUTH_PASSWORD` 把访问验证种入数据库，默认启用，第一次访问就必须认证。
+- 种入只发生一次；之后以 UI 的「系统配置 → HTTP Basic Auth」为准，`.env` 不会覆盖已有配置（包括在 UI 中关闭验证）。
+- 手工执行 Compose 时必须自行设置凭据，且要显式加载根目录 `.env`（Compose 默认在 `deploy/` 下找 `.env`）：
+  ```bash
+  docker compose --env-file .env -f deploy/docker-compose.host.yml up -d
+  ```
+  必需变量：`POSTGRES_PASSWORD`、`ARTEX_BASIC_AUTH_USER`、`ARTEX_BASIC_AUTH_PASSWORD`；`POSTGRES_USER`、`POSTGRES_DB` 默认 `artex`。
+
+#### 更新、检查与恢复
+
+```bash
+./deploy.sh update          # 拉新镜像、重建 ARTEX、重载 Nginx（--tag 可指定版本）
+./deploy.sh check           # 配置 / 端口暴露 / 证书 / 认证 / 数据库 / 磁盘检查
+./deploy.sh recover         # 修复配置、证书、容器与 Nginx（保留数据卷）
+./deploy.sh status          # 容器状态与访问地址
+./deploy.sh logs [服务名]    # artex / postgres / nginx
+```
+
+- `check` 会验证 8787、8788、PostgreSQL 端口只在回环监听，匿名访问返回 401，Basic Auth 凭据可用，证书未过期且 SAN 匹配，PostgreSQL 可连接，Nginx 配置有效，磁盘余量充足；有失败项时退出码非 0。Basic Auth 被视为生产部署的必检项，在 UI 中关闭后 `check` 会失败；在 UI 中改过密码导致 `.env` 凭据过期时给出警告。
+- `recover` 会先把 `.env` 与 `site.conf` 备份到 `deploy/state/`，再修复证书、配置和缺失 / 异常容器；PostgreSQL 数据卷与 `./data` 不会被删除。
+- `update` 会重新应用整份 Compose 配置：改了 `ARTEX_PG_PORT` / `ARTEX_PG_VOLUME` / `NGINX_IMAGE` 等服务定义时，对应容器会被重建（数据卷保留）。已有 PostgreSQL 数据卷上改 `POSTGRES_PASSWORD` 不会修改数据库里已初始化的密码，需要另行执行 `ALTER USER`。
+- JWT 签名密钥存放在独立卷 `artex-host-state`（`ARTEX_STATE_VOLUME` 可改），更新重建 ARTEX 容器后登录态与 Basic Auth 验证 Cookie 不会失效。
+- PostgreSQL 数据卷默认名为 `artex-host-pgdata`。如需复用旧部署的数据卷，在 `.env` 设置 `ARTEX_PG_VOLUME=<旧卷名>`（可用 `docker volume ls` 查看）。PostgreSQL 密码会嵌入 DSN，只支持字母、数字和 `. _ ~ -`，`deploy.sh` 会自动生成并校验。
+- 生产部署与 Bridge 部署共用根目录 `.env`。若此前用 `.env.example` 的占位密码初始化过 Bridge 的 PostgreSQL 卷，`deploy.sh install` 会把占位密码替换成随机值；再切回 Bridge 部署时需要用旧密码或重建该卷。
+
+> Host 网络部署面向 Linux 宿主机；Docker Desktop 的 host 网络行为不同，仅建议本地验证。原有 Bridge 部署与本地编译部署方式保持可用，不受影响。
 
 ### 方式三：下载预编译二进制（Releases）
 
@@ -165,7 +235,7 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 ### 维护者：通过 GitHub Actions 发布在线更新
 
-> **迁移阶段不要推送标签。** 本仓库当前没有发布任何 Release 或 Docker 镜像；请先完成二次开发，并在 Settings → Secrets and variables → Actions 中配置好 Docker Hub 凭据，再按下面的流程发布。向本仓库推送任何 `v*` 标签都会直接触发 Release 和 Docker 发布。
+> **发布前确认 Docker Hub 凭据。** 在 Settings → Secrets and variables → Actions 中配置好 `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN` 与变量 `ARTEX_DOCKER_IMAGE`；缺少凭据时 docker 构建会先失败，不会产生 Release。向本仓库推送任何 `v*` 标签都会直接触发 Release 和 Docker 发布。
 
 发布工作流为 `.github/workflows/release.yml`。推送正式标签会触发构建，也可在 Actions → release → Run workflow 中输入已存在的标签重新执行失败的发布。标签必须是 `v主版本.次版本.修订号`，例如下例的 `v0.3.26`；后续版本必须高于用户正在运行的版本。
 
@@ -178,6 +248,31 @@ git push origin v0.3.26
 工作流固定标签对应的提交，用 Node.js 22 导出前端，按照 `go.mod` 指定的 Go 版本编译内嵌前端的五个平台程序，并生成 ZIP 与 `SHA256SUMS`。AMD64 和 ARM64 镜像分别在 GitHub 原生 runner 上构建，连接临时 PostgreSQL 验证程序启动、版本和内嵌前端；两种架构都通过后发布多架构镜像的版本标签与 `latest`。镜像发布成功后上传完整 ZIP 和校验文件，最后公开 Release。已公开的同版本不允许覆盖，应发布新标签。
 
 维护者需在本仓库 Settings → Secrets and variables → Actions 中配置变量 `ARTEX_DOCKER_IMAGE`（Docker Hub 用户名/镜像名，本仓库使用 `nullblade/artex`）和 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`（有镜像推送权限）。程序包通过 GitHub 自带 `GITHUB_TOKEN` 上传，镜像通过上述凭据推送到 Docker Hub。凭据只供工作流登录使用，不写入源码或镜像。镜像地址同时记录在 `.env.example` 和 Compose 默认值中。
+
+### 维护者：跟进原作者（上游）更新
+
+本仓库与上游 `RuoJi6/ARTEX` 共用提交历史和版本号。`.github/workflows/upstream-sync.yml` 每天检查上游最新 Release；如果该版本尚未包含在本仓库 `main` 中，会创建一个 `sync/upstream-<tag>` 分支并自动开 PR，由维护者审查后合并，不会直接修改 `main`。
+
+- 自动合并成功时，PR 包含一个上游合并提交；有冲突时，PR 分支指向上游标签提交，GitHub 会标记冲突，按提示在网页或本地解决后再合并。
+- 自动 PR 使用 GitHub 自带的 `GITHUB_TOKEN` 时不会触发常规 CI。若希望 PR 自动跑 CI，可配置 Secrets `UPSTREAM_SYNC_TOKEN`（PAT，含 `repo`、`workflow` 权限）；工作流会自动优先使用它。
+- 同一个版本已有开放 PR 时不会重复创建。合并后再运行工作流会直接跳过。
+
+手工同步时**不要**执行 `git fetch upstream --tags`：本仓库的 `v0.3.25` 等发布标签与上游同名但指向不同提交，直接拉取会提示 `would clobber existing tag`。使用命名空间引用：
+
+```bash
+git fetch --no-tags upstream "+refs/tags/v0.3.26:refs/remotes/upstream/tags/v0.3.26"
+git switch -c sync/upstream-v0.3.26 origin/main
+git merge --no-ff refs/remotes/upstream/tags/v0.3.26
+```
+
+也可以把上游标签固定映射到独立命名空间，之后直接 `git fetch upstream`：
+
+```bash
+git config remote.upstream.tagOpt --no-tags
+git config --add remote.upstream.fetch '+refs/tags/*:refs/remotes/upstream/tags/*'
+```
+
+合并上游版本后，按上一节流程发布一个高于 `main` 当前版本的标签（例如上游 `v0.3.26` 合并后发布本仓库 `v0.3.26`）。
 
 ### 已有 Docker 部署迁移到本仓库镜像
 
@@ -223,10 +318,11 @@ cd ARTEX
 ./update.sh
 ```
 
-脚本先可选 `git pull` 拉取最新代码，再让你选 **① Docker 更新** 或 **② 本地编译更新**（与 `install.sh` 对应）：
+脚本先可选 `git pull` 拉取最新代码，再让你选 **① Docker 更新**、**② 本地编译更新** 或 **③ 生产部署更新**（与 `install.sh` 对应）：
 
 - **① Docker**：可指定目标镜像 tag（回车沿用 `.env` 的 `ARTEX_TAG`，缺省 `latest`）→ `docker compose pull` → `docker compose up -d`（换新镜像重启即自动迁移）。
 - **② 本地**：重建前端静态产物 → 重新编译 `./artex`（完成后重启进程生效）。
+- **③ 生产部署**：等同 `./deploy.sh update`，重建 ARTEX 容器并重载 Nginx，数据库与 `data/` 保留。
 
 ### 方式三：Docker Compose（手动）
 
@@ -285,6 +381,8 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 
 在 **系统配置 → HTTP Basic Auth** 中填写独立的验证用户名和密码，打开「启用访问验证」并点击「保存访问验证」。默认关闭，保存后立即生效，无需重启；密码至少 8 位、最多 72 字节，用户名不能包含冒号。
 
+生产部署（`./deploy.sh install`）会在首次启动时用环境变量 `ARTEX_BASIC_AUTH_USER` / `ARTEX_BASIC_AUTH_PASSWORD` 把访问验证种入数据库并启用，因此第一次访问就必须认证。种入只在数据库里没有 `auth.http_basic` 配置时发生，之后以 UI 为准，环境变量不会覆盖在 UI 中修改或关闭的配置。手工部署也可以设置这两个环境变量达到同样效果。
+
 开启后，访客先完成浏览器原生账号密码验证，再进入原有 ARTEX 登录页。网页、静态资源和 API 均受保护，`/api/health` 健康检查保留公开访问；通过访问验证仍需登录 ARTEX 才能使用业务 API。公网部署请通过 HTTPS 访问。
 
 配置持久化到数据库，密码仅保存 bcrypt 哈希，界面不会回显。保存时密码留空表示不修改；关闭后保留凭据，方便再次开启。独立的 HttpOnly 验证 Cookie 有效期为 12 小时，兼容现有 JWT 和 SSE；保存配置会使其他浏览器的旧验证 Cookie 失效，当前管理员浏览器保持访问。浏览器可能缓存 Basic Auth 凭据，可用新的无痕窗口检查验证弹窗。
@@ -303,6 +401,8 @@ WHERE key = 'auth.http_basic';
 ### 反向代理部署（HTTPS / 只开放 443）
 
 前端和 API/SSE 都由同一个后端端口（默认 `:8787`）提供，实时活动流默认走**同源**地址，因此**无需配置 `NEXT_PUBLIC_SSE_BASE`**，公网只开放 443、把 8787 留在内网即可。
+
+> `./deploy.sh install` 已自动生成并校验 Nginx 配置（见上文「生产部署」）。以下是使用自有 Nginx 或已有反向代理时的手工示例。
 
 SSE 是长连接 + 持续推送，反代**必须关闭缓冲**，否则浏览器能连上却收不到事件（表现为活动流一直转圈）。Nginx 示例：
 

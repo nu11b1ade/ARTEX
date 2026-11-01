@@ -167,6 +167,11 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		if err := s.basicAuth.load(m.pg); err != nil {
 			log.Fatalf("[auth] load HTTP Basic Auth: %v", err)
 		}
+		// 生产部署通过环境变量在首次启动时种入访问验证，保证第一次访问就要求认证；
+		// 数据库里已有配置（包括在 UI 里关闭）时不会覆盖。
+		if err := s.basicAuth.bootstrap(os.Getenv("ARTEX_BASIC_AUTH_USER"), os.Getenv("ARTEX_BASIC_AUTH_PASSWORD")); err != nil {
+			log.Fatalf("[auth] 初始化 HTTP Basic Auth: %v", err)
+		}
 	}
 	// 熔断阈值/冷却是失败路径上的热参数，启动时把全局重试策略推给 Registry 一次；
 	// 之后每次保存策略再推一次（saveLLMRetryPolicy）。

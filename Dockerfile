@@ -81,7 +81,7 @@ COPY dist/${TARGETARCH}/artex /app/artex
 COPY start.sh /app/start.sh
 RUN chmod +x /app/artex /app/start.sh
 COPY skills/ /app/skills/
-# data/（SQLite + jwt.key）持久化点
+# data/ 持久化点（SQLite、会话文件等）；JWT 签名密钥在 /app，避开可浏览工作区
 VOLUME ["/app/data"]
 EXPOSE 8787 8788
 ENTRYPOINT ["/app/start.sh"]

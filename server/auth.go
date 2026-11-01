@@ -54,6 +54,15 @@ func validatePassword(pw string) string {
 // key is generated and persisted.
 func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
 	path := filepath.Join(keyDir, jwtKeyFilename)
+	// ARTEX_JWT_KEY_PATH lets container deployments keep the signing key on a
+	// dedicated volume instead of inside the (recreated) image filesystem, so
+	// updates do not invalidate sessions and Basic Auth gate cookies.
+	if override := strings.TrimSpace(os.Getenv("ARTEX_JWT_KEY_PATH")); override != "" {
+		path = override
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("prepare jwt key dir: %w", err)
+	}
 	// one-time migration out of the old in-workspace location.
 	if legacy := filepath.Join(dataDir, jwtKeyFilename); legacy != path {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
