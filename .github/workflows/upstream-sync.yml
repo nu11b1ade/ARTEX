@@ -9,8 +9,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: upstream-sync
@@ -24,6 +24,7 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Find latest upstream release
         id: upstream
@@ -88,17 +89,20 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Create sync branch and pull request
-        if: steps.state.outputs.skip != 'true'
+        if: steps.state.outputs.skip == 'false'
         env:
-          # 配置 PAT（repo + workflow 权限）后，PR 会触发常规 CI；
-          # 未配置时使用 GITHUB_TOKEN，GitHub 不会为它创建的 PR 再跑工作流。
-          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+          # PAT 需要 Contents、Workflows 和 Pull requests 写权限。
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
           TAG: ${{ steps.upstream.outputs.tag }}
           RELEASE_URL: ${{ steps.upstream.outputs.url }}
           BRANCH: ${{ steps.state.outputs.branch }}
           BASE: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::请在仓库的 Actions secrets 中配置 UPSTREAM_SYNC_TOKEN。"
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -127,6 +131,7 @@ jobs:
             echo "⚠️ 自动合并存在冲突，分支当前指向上游标签提交，请解决冲突后再合并。" >> "$body"
           fi
 
-          git push --force origin "$BRANCH"
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            push --force origin "$BRANCH"
           gh pr create --base "$BASE" --head "$BRANCH" \
             --title "$title" --body-file "$body"
