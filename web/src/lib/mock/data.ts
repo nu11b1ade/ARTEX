@@ -2921,7 +2921,7 @@ export const trafficDetail: TrafficDetail = {
   req: `GET /v1/orders?id=1002 HTTP/1.1
 Host: api.acme.com
 Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
-User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36
+User-Agent: ARTEX-worker/1.0
 Accept: application/json
 
 `,
@@ -3348,8 +3348,18 @@ export const settings: Settings = {
   web_search_backend: "ddgs",
   brave_key_set: false,
   tavily_key_set: true,
+  deepseek_search_key_set: false,
   web_search_proxy: "",
   global_proxy: "",
+	proxy_pool: [],
+	proxy_pool_active_id: "",
+	proxy_rotate_timed_enabled: false,
+	proxy_rotate_interval_seconds: 30,
+	proxy_rotate_on_failure: false,
+	proxy_rotate_strategy: "sequential",
+	proxy_health_fail_threshold: 3,
+	proxy_health_cooldown_seconds: 60,
+	proxy_health_check_interval_seconds: 30,
 	show_egress_ip: false,
   python_interpreter: "/usr/bin/python3",
   workers: 3,

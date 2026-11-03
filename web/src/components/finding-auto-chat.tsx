@@ -22,11 +22,21 @@ function mergeActivities(oldItems: Activity[], incoming: Activity[]) {
 export function FindingAutoChat({
   findingId,
   findingTitle,
+  agentKey = "auto",
+  agentLabel = "Auto Agent",
+  promptPlaceholder = "询问这个漏洞…",
+  modal = false,
+  initialConversationId,
   open,
   onOpenChange,
 }: {
     findingId: string;
   findingTitle: string;
+  agentKey?: string;
+  agentLabel?: string;
+  promptPlaceholder?: string;
+  modal?: boolean;
+  initialConversationId?: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -41,8 +51,9 @@ export function FindingAutoChat({
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [history, setHistory] = React.useState<Conversation[]>([]);
   const cursor = React.useRef(0);
+  const chatViewportRef = React.useRef<HTMLDivElement | null>(null);
   const safeTitle = findingTitle.replace(/[\[\]\r\n]/g, " ").trim().slice(0, 100);
-  const storageKey = `artex.finding.auto-conversation.${findingId}`;
+  const storageKey = `artex.finding.${agentKey}-conversation.${findingId}`;
 
   const createConversation = React.useCallback(async () => {
     setManualEmpty(false);
@@ -50,7 +61,7 @@ export function FindingAutoChat({
     setRunning(false);
     setLoading(true);
     try {
-      const created = await api.createConversation("auto", `漏洞 #${findingId} · ${safeTitle}`);
+      const created = await api.createConversation(agentKey, `漏洞 #${findingId} · ${safeTitle}`);
       window.localStorage.setItem(storageKey, String(created.id));
       setConversation(created);
     } catch (error) {
@@ -58,15 +69,19 @@ export function FindingAutoChat({
     } finally {
       setLoading(false);
     }
-  }, [findingId, safeTitle, storageKey]);
+  }, [agentKey, findingId, safeTitle, storageKey]);
 
   React.useEffect(() => {
     if (!open || conversation || manualEmpty) return;
-    const storedID = Number(window.localStorage.getItem(storageKey));
+    if (initialConversationId && initialConversationId > 0) {
+      setConversation({ id: initialConversationId, agent_key: agentKey, title: `漏洞 #${findingId} · ${safeTitle}`, created_at: "", updated_at: "" });
+      return;
+    }
+    const storedID = agentKey === "auto" ? Number(window.localStorage.getItem(storageKey)) : 0;
     if (Number.isSafeInteger(storedID) && storedID > 0) {
       setConversation({
         id: storedID,
-        agent_key: "auto",
+        agent_key: agentKey,
         title: `漏洞 #${findingId} · ${safeTitle}`,
         created_at: "",
         updated_at: "",
@@ -74,7 +89,7 @@ export function FindingAutoChat({
       return;
     }
     void createConversation();
-  }, [conversation, createConversation, manualEmpty, open, safeTitle, storageKey]);
+  }, [conversation, createConversation, initialConversationId, manualEmpty, open, safeTitle, storageKey]);
 
   React.useEffect(() => {
     if (!historyOpen && !running) return;
@@ -85,7 +100,7 @@ export function FindingAutoChat({
         const items = await api.conversations();
         if (!live) return;
         const prefix = `漏洞 #${findingId} ·`;
-        setHistory(items.filter((item) => item.agent_key === "auto" && item.title.startsWith(prefix)));
+        setHistory(items.filter((item) => item.agent_key === agentKey && item.title.startsWith(prefix)));
       } catch {
         if (live && historyOpen) setHistory([]);
       } finally {
@@ -97,7 +112,7 @@ export function FindingAutoChat({
       live = false;
       clearTimeout(timer);
     };
-  }, [findingId, historyOpen, running]);
+  }, [agentKey, findingId, historyOpen, running]);
 
   React.useEffect(() => {
     if (!open || !conversation) return;
@@ -121,6 +136,18 @@ export function FindingAutoChat({
       live = false;
     };
   }, [conversation, open, storageKey]);
+
+  React.useEffect(() => {
+    if (!open || !conversation || loading || !messages.length) return;
+    const viewport = chatViewportRef.current;
+    if (!viewport) return;
+    const key = `artex.conversation-scroll.${conversation.id}`;
+    const saved = window.sessionStorage.getItem(key);
+    requestAnimationFrame(() => {
+      if (saved != null) viewport.scrollTop = Number(saved) || 0;
+      else viewport.scrollTop = viewport.scrollHeight;
+    });
+  }, [conversation, loading, messages.length, open]);
 
   React.useEffect(() => {
     if (!open || !conversation || !running) return;
@@ -203,13 +230,17 @@ export function FindingAutoChat({
   if (!open) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-20 z-40 flex justify-end px-4 pb-4 sm:px-6">
-      <section className="pointer-events-auto flex min-w-0 h-[calc(100svh-6rem)] w-[min(520px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border bg-background shadow-2xl">
+    <div className={modal
+      ? "pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4"
+      : "pointer-events-none fixed inset-x-0 top-20 z-40 flex justify-end px-4 pb-4 sm:px-6"}>
+      <section className={modal
+        ? "pointer-events-auto flex min-w-0 h-[min(760px,calc(100svh-2rem))] w-[min(760px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border bg-background shadow-2xl"
+        : "pointer-events-auto flex min-w-0 h-[calc(100svh-6rem)] w-[min(520px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border bg-background shadow-2xl"}>
         <header className="flex items-center gap-2 border-b p-3">
           <BotIcon className="size-4 text-primary" />
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-2 font-medium">
-              Auto Agent
+              {agentLabel}
               {running && <span className="inline-flex items-center gap-1 rounded bg-blue-500/15 px-1.5 py-0.5 text-blue-600 text-xs"><span className="size-1.5 animate-pulse rounded-full bg-blue-500" />运行中</span>}
             </p>
             <p className="truncate text-muted-foreground text-xs">漏洞 #{findingId} · {safeTitle}</p>
@@ -253,7 +284,13 @@ export function FindingAutoChat({
             <XIcon />
           </Button>
         </header>
-        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3">
+        <div
+          ref={chatViewportRef}
+          onScroll={(event) => {
+            if (conversation) window.sessionStorage.setItem(`artex.conversation-scroll.${conversation.id}`, String(event.currentTarget.scrollTop));
+          }}
+          className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3"
+        >
           <div className="w-full min-w-0 max-w-full">
             {loading ? (
               <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">
@@ -274,7 +311,7 @@ export function FindingAutoChat({
               inputGroup
               onValueChange={setInput}
               disabled={!conversation || loading || sending || running}
-              placeholder="询问这个漏洞…"
+              placeholder={promptPlaceholder}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();

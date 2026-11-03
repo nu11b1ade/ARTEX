@@ -923,7 +923,7 @@ export default function FindingsPage() {
           })}
         </div>
 
-        <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+        <div className="scrollbar-none flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pb-1">
           <InputGroup className="w-72 shrink-0">
             <InputGroupInput
               type="search"

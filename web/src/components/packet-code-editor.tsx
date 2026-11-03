@@ -2,14 +2,8 @@
 
 import * as React from "react";
 import { EditorState } from "@codemirror/state";
-import {
-  drawSelection,
-  EditorView,
-  highlightActiveLine,
-  keymap,
-  lineNumbers,
-} from "@codemirror/view";
-import { defaultKeymap, indentWithTab } from "@codemirror/commands";
+import { drawSelection, EditorView, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { defaultHighlightStyle, HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 
@@ -37,17 +31,31 @@ const httpLanguage = StreamLanguage.define({
   },
 });
 
-const packetTheme = EditorView.theme({
-  "&": { height: "100%", backgroundColor: "transparent", color: "var(--foreground)" },
-  ".cm-scroller": { overflow: "auto", fontFamily: "var(--font-mono)", fontSize: "0.75rem", fontWeight: "500", lineHeight: "1.65rem" },
-  ".cm-content": { minHeight: "100%", padding: "0.5rem 0.5rem" },
-  ".cm-gutters": { backgroundColor: "transparent", color: "var(--muted-foreground)", border: "0", borderRight: "1px solid var(--border)" },
-  ".cm-lineNumbers .cm-gutterElement": { minWidth: "2rem", padding: "0 0.5rem" },
-  ".cm-activeLine": { backgroundColor: "transparent" },
-  ".cm-activeLineGutter": { backgroundColor: "transparent" },
-  ".cm-selectionBackground, ::selection": { backgroundColor: "#c9d2e3" },
-  ".cm-cursor": { borderLeftColor: "#222" },
-}, { dark: false });
+const packetTheme = EditorView.theme(
+  {
+    "&": { height: "100%", backgroundColor: "transparent", color: "var(--foreground)" },
+    ".cm-scroller": {
+      overflow: "auto",
+      fontFamily: "var(--font-mono)",
+      fontSize: "0.75rem",
+      fontWeight: "500",
+      lineHeight: "1.65rem",
+    },
+    ".cm-content": { minHeight: "100%", padding: "0.5rem 0.5rem" },
+    ".cm-gutters": {
+      backgroundColor: "transparent",
+      color: "var(--muted-foreground)",
+      border: "0",
+      borderRight: "1px solid var(--border)",
+    },
+    ".cm-lineNumbers .cm-gutterElement": { minWidth: "2rem", padding: "0 0.5rem" },
+    ".cm-activeLine": { backgroundColor: "transparent" },
+    ".cm-activeLineGutter": { backgroundColor: "transparent" },
+    ".cm-selectionBackground, ::selection": { backgroundColor: "#c9d2e3" },
+    ".cm-cursor": { borderLeftColor: "#222" },
+  },
+  { dark: false },
+);
 
 export function PacketCodeEditor({
   value,
@@ -76,7 +84,8 @@ export function PacketCodeEditor({
         lineNumbers(),
         drawSelection(),
         highlightActiveLine(),
-        keymap.of([...defaultKeymap, indentWithTab]),
+        history(),
+        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         httpLanguage,
         syntaxHighlighting(defaultHighlightStyle),
         syntaxHighlighting(packetHighlight),

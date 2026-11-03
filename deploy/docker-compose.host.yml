@@ -65,7 +65,15 @@ services:
       - ../skills:/app/skills
       - state:/app/state
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8787/api/health || exit 1"]
+      test:
+        - CMD-SHELL
+        - |
+          response=$$(curl -sS --noproxy '*' --max-time 2 -D - -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8787/api/health) || exit 1
+          code=$$(printf '%s\n' "$$response" | tail -n 1)
+          [ "$$code" = 200 ] || {
+            [ "$$code" = 401 ] &&
+            printf '%s\n' "$$response" | grep -Eiq '^WWW-Authenticate:[[:blank:]]*Basic[[:blank:]]+realm="Restricted"([[:space:],]|$$)'
+          }
       interval: 10s
       timeout: 3s
       retries: 30

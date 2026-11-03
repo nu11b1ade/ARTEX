@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -304,6 +305,67 @@ func (s *Server) findSessionPreview(rawPath string) (string, bool) {
 		mtime := info.ModTime().UnixNano()
 		if newest == "" || mtime > newestTime {
 			newest, newestTime = candidate, mtime
+		}
+	}
+	return newest, newest != ""
+}
+
+// archiveFindingScreenshots materializes report-referenced screenshots in the
+// task workspace. Browser runs use per-session working directories, while
+// reports intentionally use the portable findings/screenshots/ path.
+func (s *Server) archiveFindingScreenshots(taskID int64, markdown string) error {
+	if taskID <= 0 {
+		return nil
+	}
+	for _, match := range screenshotMarkdownLink.FindAllStringSubmatch(markdown, -1) {
+		raw := strings.TrimSpace(match[2])
+		rel := filepath.Clean(strings.TrimPrefix(raw, "/"))
+		const prefix = "findings" + string(os.PathSeparator) + "screenshots" + string(os.PathSeparator)
+		if !strings.HasPrefix(rel, prefix) || strings.Contains(rel, ".."+string(os.PathSeparator)) {
+			continue
+		}
+		target := filepath.Join(s.m.dir, "tasks", fmt.Sprint(taskID), rel)
+		if info, err := os.Stat(target); err == nil && !info.IsDir() {
+			continue
+		}
+		source, ok := s.resolveSessionScreenshot(rel)
+		if !ok {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		in, err := os.Open(source)
+		if err != nil {
+			return err
+		}
+		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+		if err == nil {
+			_, err = io.Copy(out, in)
+		}
+		_ = in.Close()
+		_ = out.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) resolveSessionScreenshot(rel string) (string, bool) {
+	matches, err := filepath.Glob(filepath.Join(filepath.Clean(s.m.dir), "sessions", "*", rel))
+	if err != nil || len(matches) == 0 {
+		return "", false
+	}
+	var newest string
+	var newestTime int64
+	for _, candidate := range matches {
+		info, statErr := os.Stat(candidate)
+		if statErr != nil || info.IsDir() {
+			continue
+		}
+		if newest == "" || info.ModTime().UnixNano() > newestTime {
+			newest, newestTime = candidate, info.ModTime().UnixNano()
 		}
 	}
 	return newest, newest != ""

@@ -18,6 +18,8 @@ function AuthenticatedImage({
   const [captureTimestamp, setCaptureTimestamp] = React.useState<string | null>(null);
   const [zoomed, setZoomed] = React.useState(false);
   const [zoomScale, setZoomScale] = React.useState(1);
+  const [pan, setPan] = React.useState({ x: 0, y: 0 });
+  const dragRef = React.useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const imageSrc = typeof src === "string" ? src : undefined;
 
   React.useEffect(() => {
@@ -29,6 +31,7 @@ function AuthenticatedImage({
       setCaptureTimestamp(null);
       setZoomed(false);
       setZoomScale(1);
+      setPan({ x: 0, y: 0 });
       return () => {
         cancelled = true;
       };
@@ -75,31 +78,55 @@ function AuthenticatedImage({
         onClick={() => renderedSrc && setZoomed(true)}
         aria-label="放大查看报告截图"
       >
-        <img {...props} src={renderedSrc} alt={alt || "报告截图，点击放大"} />
+        <img {...props} src={renderedSrc} alt={alt || "报告截图，点击放大"} draggable={false} onDragStart={(event) => event.preventDefault()} />
         {timestamp}
       </button>
       <Dialog
         open={zoomed}
         onOpenChange={(next) => {
           setZoomed(next);
-          if (!next) setZoomScale(1);
+          if (!next) {
+            setZoomScale(1);
+            setPan({ x: 0, y: 0 });
+          }
         }}
       >
         <DialogContent
           showCloseButton
           className="flex max-h-[96dvh] max-w-[96vw] items-center justify-center overflow-hidden bg-black/85 p-3 backdrop-blur-sm sm:max-w-[96vw]"
         >
-          <div className="relative flex max-h-[90dvh] max-w-full items-center justify-center overflow-auto">
-            <div className="relative inline-block origin-center transition-transform duration-150" style={{ transform: `scale(${zoomScale})` }}>
+          <div
+            className="relative flex h-[90dvh] w-[90vw] max-w-full items-center justify-center overflow-hidden"
+            onPointerDown={(event) => {
+              if (zoomScale <= 1 || event.button !== 0) return;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
+            }}
+            onPointerMove={(event) => {
+              const drag = dragRef.current;
+              if (!drag) return;
+              setPan({ x: drag.panX + event.clientX - drag.x, y: drag.panY + event.clientY - drag.y });
+            }}
+            onPointerUp={(event) => {
+              dragRef.current = null;
+              event.currentTarget.releasePointerCapture?.(event.pointerId);
+            }}
+            onPointerCancel={() => { dragRef.current = null; }}
+            style={{ cursor: zoomScale > 1 ? (dragRef.current ? "grabbing" : "grab") : "default" }}
+          >
+            <div className="relative inline-block origin-center" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoomScale})` }}>
               <img
                 src={renderedSrc}
                 alt={alt || "报告截图"}
+                draggable={false}
+                onDragStart={(event) => event.preventDefault()}
                 className="max-h-[90dvh] max-w-[90vw] rounded-md object-contain"
               />
               {timestamp}
             </div>
           </div>
           <div className="absolute top-3 left-3 z-10 flex items-center gap-1 rounded-lg bg-black/60 p-1 backdrop-blur-sm">
+            <span className="px-2 text-xs font-medium text-white tabular-nums">{Math.round(zoomScale * 100)}%</span>
             <Button
               variant="ghost"
               size="icon-sm"

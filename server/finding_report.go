@@ -58,20 +58,30 @@ func (s *Server) generateFindingReport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	message := manualFindingReportMessage(f, taskID)
-	s.StartTriggeredRun(
+	conversation, err := s.m.pg.CreateConversation("reporter", fmt.Sprintf("漏洞报告 · finding#%d", f.ID), nil)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "创建报告对话失败: "+err.Error())
+		return
+	}
+	if err := s.m.pg.SetFindingReportConversationID(f.ID, conversation.ID); err != nil {
+		writeErr(w, http.StatusInternalServerError, "关联报告对话失败: "+err.Error())
+		return
+	}
+	s.StartTriggeredRunWithConversation(
 		"reporter",
 		fmt.Sprintf("人工生成步骤与报告 · finding#%d", f.ID),
 		message,
 		taskID,
 		false,
 		taskDesc,
-		taskGoal,
+		taskGoal, conversation.ID,
 	)
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"queued":          true,
 		"agent_key":       "reporter",
 		"finding_id":      f.ID,
 		"finding_node_id": *f.NodeID,
+		"conversation_id": conversation.ID,
 	})
 }
 

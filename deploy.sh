@@ -483,10 +483,24 @@ validate_site_config(){
     "$nimg" -t >/dev/null 2>&1 || die "Nginx 配置校验失败（检查证书与 site.conf）"
 }
 
-wait_for_url(){
+probe_artex_health(){
+  local response code
+  response="$(curl -sS --noproxy '*' --max-time 3 -D - -o /dev/null -w '%{http_code}\n' "$@" 2>/dev/null)" || return 1
+  code="${response##*$'\n'}"
+  case "$code" in
+    200) printf '%s\n' "$code" ;;
+    401)
+      printf '%s\n' "$response" | grep -Eiq '^WWW-Authenticate:[[:blank:]]*Basic[[:blank:]]+realm="Restricted"([[:space:],]|$)' || return 1
+      printf '%s\n' "$code"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+wait_for_artex(){
   local url="$1" tries="${2:-60}" i=1
   while [ "$i" -le "$tries" ]; do
-    if curl -fsS --noproxy '*' --max-time 3 "$url" >/dev/null 2>&1; then return 0; fi
+    if probe_artex_health "$url" >/dev/null; then return 0; fi
     sleep 2
     i=$((i + 1))
   done
@@ -619,7 +633,7 @@ cmd_install(){
     die "启动失败，请查看上面的日志"
   fi
   reload_nginx
-  if ! wait_for_url "http://127.0.0.1:8787/api/health"; then
+  if ! wait_for_artex "http://127.0.0.1:8787/api/health"; then
     compose logs --tail=80 artex || true
     die "ARTEX 未在预期时间内就绪，请查看上面的日志"
   fi
@@ -650,7 +664,7 @@ cmd_update(){
     compose logs --tail=80 || true
     die "ARTEX 容器重建失败，请查看上面的日志"
   fi
-  if ! wait_for_url "http://127.0.0.1:8787/api/health"; then
+  if ! wait_for_artex "http://127.0.0.1:8787/api/health"; then
     compose logs --tail=80 artex || true
     die "ARTEX 更新后未就绪，请查看上面的日志（可执行 ./deploy.sh recover）"
   fi
@@ -780,8 +794,12 @@ cmd_check(){
   done
 
   host="$(curl_host)"
-  code="$(https_code "/api/health")"
-  if [ "$code" = "200" ]; then c_pass "HTTPS 健康检查 /api/health 返回 200"; else c_fail "HTTPS 健康检查失败（HTTP ${code}）"; fi
+  code="$(probe_artex_health -k --resolve "${host}:443:127.0.0.1" "https://${host}/api/health" || true)"
+  case "$code" in
+    401) c_pass "HTTPS 健康检查返回预期的 Basic Auth 质询（401）" ;;
+    200) c_pass "HTTPS 健康检查可用（200，兼容旧版 ARTEX）" ;;
+    *) c_fail "HTTPS 健康检查未返回 200 或预期的 Basic Auth 质询" ;;
+  esac
 
   code="$(https_code "/")"
   case "$code" in
@@ -796,7 +814,11 @@ cmd_check(){
   if [ -n "$user" ] && [ -n "$pass" ]; then
     code="$(https_auth_code "/api/auth/status")"
     case "$code" in
-      200) c_pass "Basic Auth 凭据有效，ARTEX 数据库可读" ;;
+      200)
+        c_pass "Basic Auth 凭据有效，ARTEX 数据库可读"
+        code="$(https_auth_code "/api/health")"
+        if [ "$code" = "200" ]; then c_pass "通过 Basic Auth 的 HTTPS 健康检查返回 200"; else c_fail "通过 Basic Auth 的 HTTPS 健康检查失败（HTTP ${code}）"; fi
+        ;;
       401) c_warn "Basic Auth 已开启，但 .env 中的凭据无效（可能已在 UI 中修改）" ;;
       503) c_fail "ARTEX 返回 503：数据库暂不可用" ;;
       000) c_fail "带认证的 HTTPS 请求失败" ;;
@@ -888,15 +910,15 @@ cmd_recover(){
 
   info "启动/修复 ARTEX…"
   compose up -d artex || { warn "ARTEX 启动失败，重建容器（数据卷保留）"; compose rm -sf artex >/dev/null 2>&1 || true; compose up -d artex || true; }
-  if ! wait_for_url "http://127.0.0.1:8787/api/health"; then
+  if ! wait_for_artex "http://127.0.0.1:8787/api/health"; then
     warn "ARTEX 未就绪，重启一次"
     compose restart artex || true
-    wait_for_url "http://127.0.0.1:8787/api/health" || true
+    wait_for_artex "http://127.0.0.1:8787/api/health" || true
   fi
-  if ! wait_for_url "http://127.0.0.1:8787/api/health"; then
+  if ! wait_for_artex "http://127.0.0.1:8787/api/health"; then
     warn "ARTEX 仍未就绪，强制重建容器（data/ 与数据库卷保留）"
     compose up -d --force-recreate --no-deps artex || true
-    wait_for_url "http://127.0.0.1:8787/api/health" || true
+    wait_for_artex "http://127.0.0.1:8787/api/health" || true
   fi
 
   info "启动/修复 Nginx…"

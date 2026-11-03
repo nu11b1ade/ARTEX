@@ -11,6 +11,7 @@ import (
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/intercept"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -473,6 +474,16 @@ func (s *Server) toolUpdateFindingReport() actool.CoreTool {
 			if fid > 0 {
 				if err := s.checkCaseReviewScope(ctx, "update_finding_report", findingCaseRequest{FindingID: json.RawMessage(i64s(fid))}); err != nil {
 					return actool.Errorf(err.Error()), nil
+				}
+				if f, err := s.m.pg.GetFinding(fid); err == nil && f != nil && f.TaskID != nil {
+					if err := s.archiveFindingScreenshots(*f.TaskID, a.Report); err != nil {
+						return actool.Errorf("归档报告截图失败: " + err.Error()), nil
+					}
+				}
+				if conversationID := intercept.ConvIDFromContext(ctx); conversationID > 0 {
+					if err := s.m.pg.SetFindingReportConversationID(fid, conversationID); err != nil {
+						return actool.Errorf("关联报告对话失败: " + err.Error()), nil
+					}
 				}
 			}
 			n, err := s.m.pg.SetFindingReportVersionByNodeID(ctx, nodeID, a.Report, a.EvidenceVersion)

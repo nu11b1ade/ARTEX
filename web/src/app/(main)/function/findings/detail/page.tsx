@@ -72,6 +72,7 @@ function FindingDetailInner() {
   const [tab, setTab] = React.useState("overview");
   const [reportGenerating, setReportGenerating] = React.useState(false);
   const [autoChatOpen, setAutoChatOpen] = React.useState(false);
+  const [reportChatOpen, setReportChatOpen] = React.useState(false);
   const title = finding?.name || finding?.vulnclass || "未分类";
 
   const load = React.useCallback(() => {
@@ -190,6 +191,12 @@ function FindingDetailInner() {
             <BotIcon data-icon="inline-start" />
             询问 Auto Agent
           </Button>
+          {!finding.inherited ? (
+            <Button variant="outline" size="sm" onClick={() => setReportChatOpen(true)} title="打开当前漏洞报告撰写对话">
+              <FileTextIcon data-icon="inline-start" />
+              调整报告
+            </Button>
+          ) : null}
           {finding.inherited && finding.source_task_id && (
             <Badge variant="outline">来源任务 #{finding.source_task_id} · 只读</Badge>
           )}
@@ -409,6 +416,17 @@ function FindingDetailInner() {
         findingTitle={title}
         open={autoChatOpen}
         onOpenChange={setAutoChatOpen}
+      />
+      <FindingAutoChat
+        findingId={finding.id}
+        findingTitle={title}
+        agentKey="reporter"
+        agentLabel="报告撰写 Agent"
+        promptPlaceholder="描述要如何调整漏洞报告…"
+        modal
+        initialConversationId={finding.report_conversation_id}
+        open={reportChatOpen}
+        onOpenChange={setReportChatOpen}
       />
     </>
   );

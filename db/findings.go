@@ -23,20 +23,21 @@ type DBFinding struct {
 	ReportEvidenceVersion int64
 	TrafficBindings       []FindingTrafficBinding // populated only for export
 
-	ID              int64
-	TaskID          *int64
-	NodeID          *int64
-	VulnClass       string
-	Name            string // 漏洞名称(可读标题);为空时前端回退展示 VulnClass
-	Severity        string
-	Summary         string
-	Evidence        string
-	Worker          string
-	AssetIDs        []int64
-	Status          string
-	Report          string // 详细报告(Markdown);仅 GetFinding 填充,列表查询不带
-	CreatedAt       time.Time
-	TaskDescription string // populated via LEFT JOIN on tasks
+	ID                   int64
+	TaskID               *int64
+	NodeID               *int64
+	VulnClass            string
+	Name                 string // 漏洞名称(可读标题);为空时前端回退展示 VulnClass
+	Severity             string
+	Summary              string
+	Evidence             string
+	Worker               string
+	AssetIDs             []int64
+	Status               string
+	Report               string // 详细报告(Markdown);仅 GetFinding 填充,列表查询不带
+	ReportConversationID *int64 `json:"report_conversation_id,omitempty"`
+	CreatedAt            time.Time
+	TaskDescription      string // populated via LEFT JOIN on tasks
 }
 
 // Finding triage states (findings.status).
@@ -106,9 +107,9 @@ func (d *DB) AddFinding(taskID, nodeID int64, vulnclass, name, severity, summary
 // findingSelectCols is the column list (with task_description join) every finding
 // list query selects, so scanFinding stays in sync across callers.
 const findingSelectCols = `f.id, f.task_id, f.node_id, f.vulnclass, COALESCE(f.name, ''), f.severity, f.summary,
-	       f.evidence, f.worker, f.asset_ids, COALESCE(f.status, 'pending'), f.created_at,
+		f.evidence, f.worker, f.asset_ids, COALESCE(f.status, 'pending'), f.created_at,
 	       COALESCE(t.description, '') AS task_description, f.evidence_version, f.report_evidence_version,
- (SELECT count(*) FROM finding_traffic_bindings b WHERE b.finding_id=f.id)`
+	(SELECT count(*) FROM finding_traffic_bindings b WHERE b.finding_id=f.id)`
 
 // scanFindings materializes rows selected via findingSelectCols.
 func scanFindings(rows interface {
@@ -661,13 +662,14 @@ func (d *DB) FindingStats() (*FindingStats, error) {
 func (d *DB) GetFinding(id int64) (*DBFinding, error) {
 	f := &DBFinding{}
 	var aidsJSON string
-	err := d.QueryRow(`SELECT `+findingSelectCols+`, COALESCE(f.report, '')
+	var reportConv sql.NullInt64
+	err := d.QueryRow(`SELECT `+findingSelectCols+`, COALESCE(f.report, ''), f.report_conversation_id
 		FROM findings f
 		LEFT JOIN tasks t ON f.task_id = t.id
 		WHERE f.id = $1`, id).Scan(
 		&f.ID, &f.TaskID, &f.NodeID, &f.VulnClass, &f.Name, &f.Severity,
 		&f.Summary, &f.Evidence, &f.Worker, &aidsJSON, &f.Status, &f.CreatedAt,
-		&f.TaskDescription, &f.EvidenceVersion, &f.ReportEvidenceVersion, &f.TrafficCount, &f.Report)
+		&f.TaskDescription, &f.EvidenceVersion, &f.ReportEvidenceVersion, &f.TrafficCount, &f.Report, &reportConv)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -675,7 +677,49 @@ func (d *DB) GetFinding(id int64) (*DBFinding, error) {
 		return nil, err
 	}
 	_ = json.Unmarshal([]byte(aidsJSON), &f.AssetIDs)
+	if reportConv.Valid {
+		f.ReportConversationID = &reportConv.Int64
+	}
+	if f.ReportConversationID == nil && strings.TrimSpace(f.Report) != "" {
+		if resolved, resolveErr := d.ResolveFindingReportConversation(f.ID); resolveErr == nil {
+			f.ReportConversationID = resolved
+		}
+	}
 	return f, nil
+}
+
+func (d *DB) SetFindingReportConversationID(findingID, conversationID int64) error {
+	_, err := d.Exec(`UPDATE findings SET report_conversation_id=$2 WHERE id=$1`, findingID, conversationID)
+	return err
+}
+
+// ResolveFindingReportConversation backfills links for reports generated before
+// report_conversation_id was persisted.
+func (d *DB) ResolveFindingReportConversation(findingID int64) (*int64, error) {
+	var id int64
+	err := d.QueryRow(`SELECT c.id FROM conversations c
+	JOIN conversation_activities a ON a.conversation_id=c.id
+	WHERE c.agent_key='reporter' AND (
+	 c.title = '漏洞报告 · finding#' || $1::text OR
+	 c.title ILIKE '%finding#' || $1::text || '%' OR
+	 a.detail ILIKE '%finding_id=' || $1::text || '%' OR
+	 a.detail ILIKE '%"finding_id":' || $1::text || '%'
+	)
+	ORDER BY CASE WHEN EXISTS (
+		SELECT 1 FROM conversation_activities r
+		WHERE r.conversation_id=c.id AND (r.tool='update_finding_report' OR r.summary ILIKE 'finding % report updated%')
+	) THEN 0 ELSE 1 END,
+	c.created_at ASC, c.id ASC LIMIT 1`, findingID).Scan(&id)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := d.SetFindingReportConversationID(findingID, id); err != nil {
+		return nil, err
+	}
+	return &id, nil
 }
 
 // DeleteFinding removes a finding entirely: the standalone findings row and its
