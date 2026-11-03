@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Autumn-27/artex/netprofile"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
@@ -137,6 +138,7 @@ func NewSSE(ctx context.Context, server, sseURL string, headers map[string]strin
 		return nil, err
 	}
 	req.Header.Set("Accept", "text/event-stream")
+	netprofile.Apply(req)
 	for k, v := range cleanHeaders {
 		req.Header.Set(k, v)
 	}
@@ -379,6 +381,7 @@ func (c *Client) Close() error {
 		return nil
 	}
 	req.Header.Set("Mcp-Session-Id", sid)
+	netprofile.Apply(req)
 	for k, v := range c.headers {
 		req.Header.Set(k, v)
 	}
@@ -435,6 +438,7 @@ func (c *Client) roundTrip(ctx context.Context, body rpcRequest, expectResp bool
 		version = protocolVersion
 	}
 	req.Header.Set("MCP-Protocol-Version", version)
+	netprofile.Apply(req)
 	for k, v := range c.headers {
 		req.Header.Set(k, v)
 	}
@@ -506,6 +510,7 @@ func (c *Client) legacyRoundTrip(ctx context.Context, body rpcRequest, expectRes
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	netprofile.Apply(req)
 	for k, v := range c.headers {
 		req.Header.Set(k, v)
 	}

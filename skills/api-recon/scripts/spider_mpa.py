@@ -14,23 +14,46 @@ the same origin and extracts:
 
 Stdlib only. Same-origin, bounded, polite. Provide --cookie for an authed crawl.
 """
-import sys, os, re, ssl, argparse, urllib.request, urllib.parse, time
+import sys, os, re, ssl, argparse, gzip, zlib, urllib.request, urllib.parse, time
 from html.parser import HTMLParser
 from collections import deque
 
 CTX = ssl.create_default_context(); CTX.check_hostname = False; CTX.verify_mode = ssl.CERT_NONE
-UA = "Mozilla/5.0 (spa-api-recon spider)"
+# 使用普通桌面 Chrome 的请求特征，避免把 api-recon/ARTEX 暴露给目标。
+UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+HEADERS = {
+    "User-Agent": UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate",
+}
 SKIP_EXT = re.compile(r'\.(css|png|jpe?g|gif|svg|ico|woff2?|ttf|pdf|zip|mp4|webp|js)(\?|$)', re.I)
 API_HINT = re.compile(r'/(?:api|rest|service|ajax|action|do|rpc|graphql|v\d|admin|backend)\b', re.I)
 
+def _decoded(data, encoding):
+    """urllib 不会自动解压 Content-Encoding，这里补齐 gzip/deflate。"""
+    enc = (encoding or "").lower()
+    try:
+        if "gzip" in enc:
+            return gzip.decompress(data)
+        if "deflate" in enc:
+            try:
+                return zlib.decompress(data)
+            except zlib.error:
+                return zlib.decompress(data, -zlib.MAX_WBITS)
+    except Exception:
+        pass
+    return data
+
 def fetch(url, cookie):
-    h = {"User-Agent": UA}
+    h = dict(HEADERS)
     if cookie: h["Cookie"] = cookie
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers=h), context=CTX, timeout=20) as r:
             ct = r.headers.get("Content-Type", "")
             if "html" not in ct and "xml" not in ct: return "", ct
-            return r.read().decode("utf-8", "ignore"), ct
+            data = _decoded(r.read(), r.headers.get("Content-Encoding"))
+            return data.decode("utf-8", "ignore"), ct
     except Exception:
         return "", ""
 

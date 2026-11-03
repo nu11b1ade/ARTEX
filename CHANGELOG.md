@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### 部署与发布维护
+
+- 迁移至 `nu11b1ade/ARTEX`，基于 `RuoJi6/ARTEX` v0.3.25 正式版本，保留原始提交历史。
+- Norma 依赖切换到 `nu11b1ade/Norma` 的 `v0.4.3` 正式发布版本。
+- Docker 镜像迁移到 Docker Hub `nullblade/artex`；移除 Vercel 在线 Demo 部署链路。
+- 本仓库暂未发布 v0.3.25 的 GitHub Release 与 Docker 镜像。
+
 ## [0.3.18] - 2026-10-12
 
 ### 审批审查

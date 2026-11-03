@@ -1,13 +1,52 @@
 package agent
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Autumn-27/artex/netprofile"
 )
 
-func TestProxyEnvEmptyIsNil(t *testing.T) {
-	if env := proxyEnv("", ""); env != nil {
-		t.Fatalf("proxyEnv(\"\", \"\") = %v, want nil (direct)", env)
+func envValue(env []string, prefix string) string {
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			return strings.TrimPrefix(e, prefix)
+		}
+	}
+	return ""
+}
+
+func TestProxyEnvDirectStillSetsClientProfile(t *testing.T) {
+	env := proxyEnv("", "")
+	home := envValue(env, "CURL_HOME=")
+	if home == "" {
+		t.Fatalf("proxyEnv(\"\", \"\") missing CURL_HOME: %v", env)
+	}
+	for _, name := range []string{".curlrc", "_curlrc"} {
+		b, err := os.ReadFile(filepath.Join(home, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if !strings.Contains(string(b), netprofile.UserAgent) {
+			t.Fatalf("%s does not contain the browser UA: %q", name, b)
+		}
+		if !strings.Contains(string(b), netprofile.AcceptLanguage) {
+			t.Fatalf("%s does not contain Accept-Language: %q", name, b)
+		}
+	}
+	wgetrc := envValue(env, "WGETRC=")
+	if wgetrc == "" {
+		t.Fatalf("proxyEnv missing WGETRC: %v", env)
+	}
+	if b, err := os.ReadFile(wgetrc); err != nil || !strings.Contains(string(b), netprofile.UserAgent) || !strings.Contains(string(b), netprofile.AcceptLanguage) {
+		t.Fatalf("wgetrc = %q, err = %v", b, err)
+	}
+	for _, e := range env {
+		if strings.HasPrefix(e, "HTTP_PROXY=") || strings.HasPrefix(e, "ALL_PROXY=") {
+			t.Fatalf("direct env must not contain proxy vars: %v", env)
+		}
 	}
 }
 

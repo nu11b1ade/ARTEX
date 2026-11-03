@@ -21,6 +21,7 @@ import (
 	"github.com/Autumn-27/artex/enrich"
 	"github.com/Autumn-27/artex/guard"
 	"github.com/Autumn-27/artex/intercept"
+	"github.com/Autumn-27/artex/netprofile"
 	"github.com/Autumn-27/artex/traffic"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -892,6 +893,7 @@ func (m *Manager) syncBrowserMCPProxy() {
 			env["NODE_EXTRA_CA_CERTS"] = cert
 		}
 	}
+	env = ensureBrowserMCPClientProfile(m.dir, args, env)
 	srv.Args = encodeJSON(args)
 	srv.Env = encodeJSON(env)
 	if _, err := m.pg.SaveMCP(srv); err != nil {
@@ -915,24 +917,16 @@ func (m *Manager) syncBrowserMCPProxy() {
 // repaired as soon as the browser MCP is reconciled (including after a restart).
 func ensureBrowserMCPArgs(args []string, screenshotEnabled bool) []string {
 	out := append([]string(nil), args...)
-	has := func(want string) bool {
-		for _, arg := range out {
-			if arg == want || strings.HasPrefix(arg, want+"=") {
-				return true
-			}
-		}
-		return false
-	}
-	if !has("--headless") {
+	if !hasArg(out, "--headless") {
 		out = append(out, "--headless")
 	}
-	if !has("--no-sandbox") {
+	if !hasArg(out, "--no-sandbox") {
 		out = append(out, "--no-sandbox")
 	}
-	if screenshotEnabled && !has("--ignore-https-errors") {
+	if screenshotEnabled && !hasArg(out, "--ignore-https-errors") {
 		out = append(out, "--ignore-https-errors")
 	}
-	if screenshotEnabled && !has("--isolated") {
+	if screenshotEnabled && !hasArg(out, "--isolated") {
 		// Playwright rejects --isolated together with --user-data-dir. The
 		// screenshot opt-in deliberately favors independent per-run contexts,
 		// so discard a stale/custom persistent profile flag before enabling the
@@ -956,6 +950,74 @@ func ensureBrowserMCPArgs(args []string, screenshotEnabled bool) []string {
 		out = append(out, "--isolated")
 	}
 	return out
+}
+
+// hasArg reports whether args contains want as a standalone flag or want=value.
+func hasArg(args []string, want string) bool {
+	for _, arg := range args {
+		if arg == want || strings.HasPrefix(arg, want+"=") {
+			return true
+		}
+	}
+	return false
+}
+
+// browserMCPConfigFile is generated under the persistent data dir so the path
+// survives restarts (the MCP process reads it when it starts).
+const browserMCPConfigFile = "playwright-mcp.json"
+
+// ensureBrowserMCPClientProfile pins the browser's UA and locale to the same
+// profile as the rest of ARTEX's outbound traffic. Both values live in the MCP
+// env map rather than argv: the web MCP editor joins args with spaces and splits
+// them on whitespace, which would truncate a UA containing spaces. A value the
+// user configured (env or argv) is left untouched.
+func ensureBrowserMCPClientProfile(dir string, args []string, env map[string]string) map[string]string {
+	if env == nil {
+		env = map[string]string{}
+	}
+	if !hasArg(args, "--user-agent") {
+		if _, ok := env["PLAYWRIGHT_MCP_USER_AGENT"]; !ok {
+			env["PLAYWRIGHT_MCP_USER_AGENT"] = netprofile.UserAgent
+		}
+	}
+	if !hasArg(args, "--config") {
+		// Rewrite our own generated file on every sync (it may have been removed),
+		// but never replace a config path the user pointed at.
+		cur, ok := env["PLAYWRIGHT_MCP_CONFIG"]
+		if !ok || cur == filepath.Join(dir, browserMCPConfigFile) {
+			if path, err := writeBrowserMCPConfig(dir); err == nil {
+				env["PLAYWRIGHT_MCP_CONFIG"] = path
+			} else {
+				log.Printf("[mcp] browser 语言配置写入失败: %v", err)
+			}
+		}
+	}
+	return env
+}
+
+// writeBrowserMCPConfig writes the Playwright MCP config that fixes the
+// context locale (and therefore Accept-Language / navigator.language). The UA
+// is supplied separately via PLAYWRIGHT_MCP_USER_AGENT so the file stays small.
+func writeBrowserMCPConfig(dir string) (string, error) {
+	path := filepath.Join(dir, browserMCPConfigFile)
+	cfg := map[string]any{
+		"browser": map[string]any{
+			"contextOptions": map[string]any{
+				"locale": "en-US",
+				"extraHTTPHeaders": map[string]string{
+					"Accept-Language": netprofile.AcceptLanguage,
+				},
+			},
+		},
+	}
+	raw, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // stripProxyArgs removes any --proxy-server/--proxy-bypass flags (both "--flag val"

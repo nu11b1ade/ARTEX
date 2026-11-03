@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ARTEX 安装脚本：① 全部 Docker  ② 本地编译运行
+# ARTEX 安装脚本：① 全部 Docker（Bridge） ② 本地编译运行 ③ 生产部署（Host + Nginx HTTPS）
 set -euo pipefail
 cd "$(cd "$(dirname "$0")" && pwd)"
 
@@ -113,11 +113,13 @@ JSON
 
 echo "=============================="
 echo "  ARTEX 安装"
-echo "  1) 全部 Docker 安装"
+echo "  1) 全部 Docker 安装（Bridge）"
 echo "  2) 本地运行（go 编译）"
+echo "  3) 生产部署（Host 网络 + Nginx HTTPS）"
 echo "=============================="
 case "$(ask '选择' 1)" in
   1) install_docker ;;
   2) install_local ;;
+  3) exec ./deploy.sh install ;;
   *) die "无效选择" ;;
 esac
