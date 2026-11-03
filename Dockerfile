@@ -16,6 +16,9 @@ ARG TARGETARCH
 ARG JADX_VERSION=1.5.6
 ARG APKTOOL_VERSION=3.0.3
 ARG VULNX_VERSION=2.0.2
+# uv / uvx 供 Python 命令行工具和 MCP 使用，随目标架构选取官方二进制。
+COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /uvx /usr/local/bin/
+RUN uv --version && uvx --version
 # 常用工具：ripgrep / curl / vim，加一批 recon 常备件（按需增删）。
 # Node 从 NodeSource 装 22.x，与前端构建使用的主版本一致。
 # openjdk-17-jre-headless 供 JADX / Apktool 使用。
