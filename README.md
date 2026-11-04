@@ -8,8 +8,6 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 本仓库为二次开发版本 [nu11b1ade/ARTEX](https://github.com/nu11b1ade/ARTEX)，基于 [RuoJi6/ARTEX](https://github.com/RuoJi6/ARTEX) 的 v0.3.25 正式版本迁移，并保留 https://github.com/Autumn-27/ARTEX 的原始提交历史与 AGPL-3.0 许可证。Norma 依赖已切换到 [nu11b1ade/Norma](https://github.com/nu11b1ade/Norma) 的 `v0.4.3` 正式发布版本；Docker 镜像地址为 [nullblade/artex](https://hub.docker.com/r/nullblade/artex)，由本仓库 GitHub Actions 构建发布。
 
-> 当前处于二次开发阶段，本仓库尚未发布 Release 与 Docker 镜像；可先从源码编译运行，或参照 Dockerfile 说明构建本地镜像。
-
 ---
 
 ## 截图预览
