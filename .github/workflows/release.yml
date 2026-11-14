@@ -3,9 +3,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "已存在的正式版本标签，例如 v0.3.15"
+        description: "正式版本标签，例如 v0.3.26"
         required: true
         type: string
+      create_tag:
+        description: "从默认分支的当前提交发布新标签（关闭时使用已有标签）"
+        type: boolean
+        default: false
   push:
     tags: ["v*"]
 
@@ -27,6 +31,8 @@ jobs:
         id: version
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          CREATE_TAG: ${{ inputs.create_tag }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           ARTEX_DOCKER_IMAGE: ${{ vars.ARTEX_DOCKER_IMAGE }}
         run: |
           if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
@@ -37,13 +43,31 @@ jobs:
             echo "请先配置 Actions 变量 ARTEX_DOCKER_IMAGE，格式为 Docker Hub 用户名/镜像名" >&2
             exit 1
           fi
+          if [[ "$CREATE_TAG" == true && "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
+            echo "新标签只能从默认分支发布" >&2
+            exit 1
+          fi
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/${{ steps.version.outputs.tag }}
+          ref: ${{ inputs.create_tag && github.sha || format('refs/tags/{0}', steps.version.outputs.tag) }}
       - name: Pin release commit
         id: commit
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          CREATE_TAG: ${{ inputs.create_tag }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if [[ "$CREATE_TAG" == true ]]; then
+            status=0
+            git ls-remote --exit-code --refs origin "refs/tags/$RELEASE_TAG" >/dev/null || status=$?
+            if [[ "$status" == 0 ]]; then
+              echo "标签 $RELEASE_TAG 已存在，请关闭创建新标签选项" >&2
+              exit 1
+            elif [[ "$status" != 2 ]]; then
+              exit "$status"
+            fi
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   # ① 前端静态导出（一次），产物给交叉编译各平台复用
   frontend:
@@ -179,18 +203,18 @@ jobs:
             程序包提供 Linux、macOS 的 AMD64 / ARM64 及 Windows AMD64，并附 SHA256SUMS。
             部署和在线更新说明见本仓库 README。
       - name: Publish complete release
-        run: gh release edit "$RELEASE_TAG" --draft=false --latest
-
-  # GITHUB_TOKEN 发布的 Release 不会再次触发 release: published 工作流。
-  # 直接依赖发布 job，保证 ZIP、校验文件和镜像全部发布成功后才更新 Demo。
-  demo:
-    needs: [prepare, release]
-    uses: ./.github/workflows/demo.yml
-    with:
-      tag: ${{ needs.prepare.outputs.tag }}
-      commit: ${{ needs.prepare.outputs.commit }}
-    secrets:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        env:
+          CREATE_TAG: ${{ inputs.create_tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          if [[ "$CREATE_TAG" == true ]]; then
+            if ! gh api --method POST "repos/$GH_REPO/git/refs" \
+              -f ref="refs/tags/$RELEASE_TAG" -f sha="$RELEASE_COMMIT" >/dev/null; then
+              # A retry may find the tag created by the previous attempt.
+              [[ "$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq .object.sha)" == "$RELEASE_COMMIT" ]]
+            fi
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false --latest
 
   # ④ 在原生 AMD64 / ARM64 runner 上构建和测试，再推送架构镜像。
   docker:
