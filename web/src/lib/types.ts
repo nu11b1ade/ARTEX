@@ -21,6 +21,7 @@ export function parseWorkerCountInput(value: string): number | null {
 }
 
 export interface Task {
+  numeric_id?: number; // Underlying numeric identity when demo route IDs use aliases.
   distinct_findings?: FindingDistinctStats;
   id: string;
   remark?: string;
@@ -33,6 +34,10 @@ export interface Task {
   description: string;
   goal: string;
   status: TaskStatus;
+  no_result_seconds?: number;
+  no_result_min_findings?: number;
+  no_result_min_severity?: "" | "low" | "medium" | "high" | "critical";
+  stop_reason?: string;
   created_at: string;
   created_unix?: number;
   completed_at?: string; // RFC3339 finish time (done/failed); "" if unfinished
@@ -556,6 +561,7 @@ export interface FindingGroup {
   task_name?: string; // 可选任务名称;空/缺省=未命名
   task_description: string;
   task_status: string;
+  task_stop_reason?: string;
   count: number;
   critical: number;
   high: number;
@@ -579,7 +585,7 @@ export interface FindingDeepenResponse {
   queued: boolean;
 }
 
-// FindingStats 是发现全表聚合(统计卡 + 漏洞类型下拉),服务端计算,不受分页影响。
+// FindingStats 的计数跟随列表筛选，不受分页影响；类型和任务选项保留全局范围。
 export interface FindingStats {
   distinct?: FindingDistinctStats;
   total: number;
@@ -1059,7 +1065,12 @@ export interface ProxyPoolEntry {
   health: "healthy" | "unhealthy-cooling" | "disabled" | string;
 }
 
-export interface ProxySwitchLog { at: string; from: string; to: string; reason: string }
+export interface ProxySwitchLog {
+  at: string;
+  from: string;
+  to: string;
+  reason: string;
+}
 
 export interface WorkerPool {
   profile_id: string;
@@ -1956,6 +1967,7 @@ export interface EgressCheck {
   path?: string;
   skipped?: boolean;
   skip_reason?: string;
+  skip_code?: string;
   result: EgressProbeResult;
 }
 
@@ -1967,4 +1979,21 @@ export interface EgressReport {
   agent_proxy: string;
   checks: EgressCheck[];
   warnings?: string[];
+  warning_details?: { code: string; params?: Record<string, unknown>; message: string }[];
+}
+
+// Task-relative, read-only file browser.
+export interface TaskFileEntry extends WorkspaceEntry {
+  symlink: boolean;
+  intent_id?: number;
+  intent_title?: string;
+  intent_state?: string;
+}
+export interface TaskFileListing {
+  path: string;
+  entries: TaskFileEntry[];
+  total: number;
+  size: number;
+  truncated: boolean;
+  missing: boolean;
 }

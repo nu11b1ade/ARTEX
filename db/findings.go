@@ -312,6 +312,7 @@ type FindingGroup struct {
 	TaskName        string    `json:"task_name"` // 可选任务名称;空=未命名
 	TaskDescription string    `json:"task_description"`
 	TaskStatus      string    `json:"task_status"`
+	TaskStopReason  string    `json:"task_stop_reason"`
 	Count           int       `json:"count"`
 	Critical        int       `json:"critical"`
 	High            int       `json:"high"`
@@ -336,7 +337,7 @@ func (d *DB) ListFindingGroups(f FindingFilter, page, pageSize int) ([]FindingGr
 	}
 	where, args := f.where()
 	grouped := ` FROM findings f LEFT JOIN tasks t ON f.task_id=t.id` + where +
-		` GROUP BY t.id, t.name, t.description, t.status, t.paused, t.queued`
+		` GROUP BY t.id, t.name, t.description, t.status, t.paused, t.queued, t.stop_reason`
 
 	var groupTotal, findingTotal int
 	countQuery := `SELECT COUNT(*), COALESCE(SUM(finding_count),0) FROM (` +
@@ -359,7 +360,7 @@ func (d *DB) ListFindingGroups(f FindingFilter, page, pageSize int) ([]FindingGr
 			WHEN t.queued THEN 'queued'
 			WHEN t.paused THEN 'paused'
 			ELSE t.status
-		END, ''),
+		END, ''), COALESCE(t.stop_reason,''),
 		COUNT(*),
 		COUNT(*) FILTER (WHERE f.severity='critical'),
 		COUNT(*) FILTER (WHERE f.severity='high'),
@@ -376,7 +377,7 @@ func (d *DB) ListFindingGroups(f FindingFilter, page, pageSize int) ([]FindingGr
 	for rows.Next() {
 		var group FindingGroup
 		var taskID sql.NullInt64
-		if err := rows.Scan(&taskID, &group.TaskName, &group.TaskDescription, &group.TaskStatus, &group.Count,
+		if err := rows.Scan(&taskID, &group.TaskName, &group.TaskDescription, &group.TaskStatus, &group.TaskStopReason, &group.Count,
 			&group.Critical, &group.High, &group.Medium, &group.Low, &group.LastFoundAt); err != nil {
 			return nil, 0, 0, err
 		}
@@ -653,6 +654,42 @@ func (d *DB) FindingStats() (*FindingStats, error) {
 		st.VulnClasses = append(st.VulnClasses, vulnclass)
 	}
 	sort.Strings(st.VulnClasses)
+	return st, nil
+}
+
+// FilteredFindingStats uses the same row and asset filters as the findings list.
+// Options remain global so choosing a filter never removes other choices.
+// Counts cover matching hot rows, exactly like ListFindingCases; archive-only
+// aggregates cannot be filtered by record content and are not list results.
+func (d *DB) FilteredFindingStats(filter FindingFilter) (*FindingStats, error) {
+	st, err := d.FindingStats()
+	if err != nil {
+		return nil, err
+	}
+	filter, err = d.applyAssetScope(filter)
+	if err != nil {
+		return nil, err
+	}
+	where, args := filter.where()
+	st.Distinct = new(FindingDistinctStats)
+	err = d.QueryRow(`SELECT COUNT(*),
+		COUNT(*) FILTER (WHERE f.status='pending'),
+		COUNT(*) FILTER (WHERE f.severity='critical'),
+		COUNT(*) FILTER (WHERE f.severity='high'),
+		COUNT(*) FILTER (WHERE f.severity='medium'),
+		COUNT(*) FILTER (WHERE f.severity='low'),
+		COUNT(DISTINCT CASE WHEN m.case_id IS NULL THEN 'f:'||f.id ELSE 'c:'||m.case_id END)
+		FROM findings f LEFT JOIN tasks t ON t.id=f.task_id
+		LEFT JOIN finding_case_members m ON m.finding_id=f.id`+where, args...).Scan(
+		&st.Total, &st.Pending, &st.Critical, &st.High, &st.Medium, &st.Low, &st.Distinct.Total)
+	if err != nil {
+		return nil, err
+	}
+	// Severity buckets describe matching original reports, not a folder's rating.
+	st.Distinct.Reports = st.Total
+	st.Distinct.Critical, st.Distinct.High = st.Critical, st.High
+	st.Distinct.Medium, st.Distinct.Low = st.Medium, st.Low
+	st.Distinct.Unassessed = st.Total - st.Critical - st.High - st.Medium - st.Low
 	return st, nil
 }
 
