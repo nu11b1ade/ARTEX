@@ -1,5 +1,6 @@
 """Offline regressions: python3 -m unittest discover -s skills/api-recon/scripts."""
 import contextlib
+import gzip
 import http.server
 import importlib.util
 import os
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import zlib
 from unittest.mock import patch
 
 
@@ -56,6 +58,47 @@ def capture_server():
 
 
 class UserAgentTests(unittest.TestCase):
+    def test_companion_headers_and_compressed_responses(self):
+        seen = []
+        body = b"<html><h1>Compressed page</h1></html>"
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append(dict(self.headers))
+                encoding = self.path.strip("/")
+                encoded = gzip.compress(body) if encoding == "gzip" else zlib.compress(body)
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Encoding", encoding)
+                self.end_headers()
+                self.wfile.write(encoded)
+
+            def log_message(self, *args):
+                pass
+
+        with http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                with patch.dict(os.environ, DIRECT_ENV):
+                    for name in ("harvest_static", "spider_mpa"):
+                        module = load_script(name)
+                        for encoding in ("gzip", "deflate"):
+                            url = f"http://127.0.0.1:{server.server_port}/{encoding}"
+                            if name == "harvest_static":
+                                output, status = module.fetch(url, user_agent_value="Configured-UA")
+                                self.assertEqual(status, 200)
+                            else:
+                                output, _ = module.fetch(url, "", user_agent_value="Configured-UA")
+                            self.assertEqual(output, body.decode())
+                            self.assertEqual(seen[-1]["User-Agent"], "Configured-UA")
+                            self.assertIn("text/html", seen[-1]["Accept"])
+                            self.assertEqual(seen[-1]["Accept-Language"], "en-US,en;q=0.9")
+                            self.assertEqual(seen[-1]["Accept-Encoding"], "gzip, deflate")
+            finally:
+                server.shutdown()
+                thread.join()
+
     def assert_identity(self, seen, expected, samples):
         self.assertTrue(seen)
         if expected == "random":

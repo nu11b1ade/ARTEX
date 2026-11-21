@@ -60,10 +60,10 @@ func TestCrossOriginRedirectPreservesBrowserPolicy(t *testing.T) {
 	var origin string
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for name, want := range map[string]string{
-			"User-Agent": ua,
-			"Referer": origin + "/",
-			"Accept-Language": "en-US,en;q=0.9",
-			"Sec-Fetch-Site": "none",
+			"User-Agent":         ua,
+			"Referer":            origin + "/",
+			"Accept-Language":    "en-US,en;q=0.9",
+			"Sec-Fetch-Site":     "none",
 			"Sec-CH-UA-Platform": `"Windows"`,
 		} {
 			if got := r.Header.Get(name); got != want {
