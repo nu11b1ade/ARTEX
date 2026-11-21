@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ARTEX 更新脚本：① Docker 更新（拉新镜像重建）  ② 本地编译更新（重建二进制）
+# ARTEX 更新脚本：① Docker 更新（Bridge）  ② 本地编译更新  ③ 生产部署更新（Host + Nginx）
 # 与 install.sh 对应：install 负责首次落地，update 负责升级到新版本。
 # DB 迁移无需手动执行——artex 每次启动都会幂等重跑 schema.sql（含 ADD COLUMN/CREATE
 # INDEX IF NOT EXISTS），所以“重启即迁移”。数据（pgdata 卷、./data、./skills）不受影响。
@@ -72,11 +72,13 @@ update_local(){
 
 echo "=============================="
 echo "  ARTEX 更新"
-echo "  1) Docker 更新（拉新镜像重建）"
+echo "  1) Docker 更新（Bridge，拉新镜像重建）"
 echo "  2) 本地更新（go 重新编译）"
+echo "  3) 生产部署更新（Host + Nginx）"
 echo "=============================="
 case "$(ask '选择' 1)" in
   1) sync_repo; update_docker ;;
   2) sync_repo; update_local ;;
+  3) sync_repo; exec ./deploy.sh update --no-git-pull ;;
   *) die "无效选择" ;;
 esac

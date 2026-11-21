@@ -49,6 +49,8 @@
 
 Go 服务重启后使用新配置；Docker 在 `.env` 设置后重建容器。直接运行 Python 模板时继承同名环境变量。已同步 agent OPSEC 提示，避免旧提示与平台随机策略冲突；遇到限速等异常时仍停止，不以换 UA 继续当前方向。
 
+二开合并保留了 netprofile 的配套请求头及 Python 模板的 gzip/deflate 解压。WebFetch 使用当前 Norma 二开版本的网络策略：CONNECT 复用本次所选 UA、Chromium Client Hints 跟随所选版本和平台、跨站 Referer 只发送来源，HTTPS 降级不发送 Referer；非可信上下文不发送 Client Hints / Fetch Metadata。TLS 和 Cookie 仍由实际传输实现处理。
+
 UA 随机化不会同步改变 TLS、Cookie 或其他浏览器特征，不能保证客户端不可识别；第三方出口代理也可能再次改写请求头。
 
 ## 检查过的其他通道与边界
@@ -66,6 +68,8 @@ UA 随机化不会同步改变 TLS、Cookie 或其他浏览器特征，不能保
 服务端响应中的 `X-Artex-Auth` 仍用于前端识别 Basic Auth 未认证状态，属于站点自身对访问者的响应协议；它不是向目标站点发送的请求头。本次不改变该协议，也不承诺消除服务端页面、API、TLS 或其他流量特征。
 
 ## 回归验证
+
+以下上游验证记录保留作历史参考；本次二开集成的验证结果以 PR 和 Release 说明为准。
 
 - Go：检查真实 HTTP 线上头、随机样本选择 / 固定值覆盖 / 显式空值、代理及失败直连重试、重定向、CA 信任、静态资源限制、HTML / RECON 解析、agent session 注册、自定义工具 / 重放器覆盖、自更新查询及下载和代理录制。
 - Python：本地 HTTP 服务验证默认随机 / 环境变量 / CLI 覆盖 / 显式空值、非法头值、重定向、Cookie 保留及产物生成；不访问真实目标。

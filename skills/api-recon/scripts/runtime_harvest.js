@@ -29,7 +29,8 @@
  *   "proxy": "http://127.0.0.1:8080",           // optional; also HTTP_PROXY / HTTPS_PROXY
  *   "waitUntil": "domcontentloaded",            // prefer over networkidle2 for large SPAs
  *   "routeTimeout": 12000,
- *   "waitMs": 1200, "perRouteMs": 900, "headless": true
+ *   "waitMs": 1200, "perRouteMs": 900, "headless": true,
+ *   "userAgent": "Mozilla/5.0 ..."               // optional; defaults to a desktop Chrome UA
  * }
  */
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -39,6 +40,11 @@ const path = require('path');
 let puppeteer;
 try { puppeteer = require('puppeteer-core'); }
 catch (e) { console.error("[!] run `npm install` in the scripts/ dir first (needs puppeteer-core)"); process.exit(1); }
+
+// Headless Chromium 默认 UA 带 "HeadlessChrome"；统一成普通桌面 Chrome，
+// 避免目标仅凭 UA 就识别出自动化抓取。可用 config.userAgent 覆盖。
+const DEFAULT_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36";
+const ACCEPT_LANGUAGE = "en-US,en;q=0.9";
 
 function loadCfg(p) {
   const c = JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -51,6 +57,7 @@ function loadCfg(p) {
   c.routes = c.routes || ['/'];
   c.waitMs = c.waitMs || 1200; c.perRouteMs = c.perRouteMs || 900;
   c.headless = c.headless !== false;
+  c.userAgent = c.userAgent || DEFAULT_UA;
   c.waitUntil = c.waitUntil || 'domcontentloaded';
   c.routeTimeout = c.routeTimeout || 12000;
   c.captureResponses = c.captureResponses !== false; // record response body samples (forward mode)
@@ -94,13 +101,15 @@ function neutralize(txt, n) {
     process.env.HTTP_PROXY = cfg.proxy;
     process.env.HTTPS_PROXY = cfg.proxy;
   }
-  const launchArgs = ['--no-sandbox', '--disable-dev-shm-usage', '--ignore-certificate-errors'];
+  const launchArgs = ['--no-sandbox', '--disable-dev-shm-usage', '--ignore-certificate-errors', '--lang=en-US'];
   if (cfg.proxy) launchArgs.push(`--proxy-server=${cfg.proxy}`);
   const browser = await puppeteer.launch({
     executablePath: cfg.chromium, headless: cfg.headless ? 'new' : false,
     args: launchArgs
   });
   const page = await browser.newPage();
+  await page.setUserAgent(cfg.userAgent);
+  await page.setExtraHTTPHeaders({ 'Accept-Language': ACCEPT_LANGUAGE });
 
   // ---- WebSocket frame capture via CDP (fetch/XHR interception can't see WS) ----
   if (cfg.recordWs) {

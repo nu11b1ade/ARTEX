@@ -1,0 +1,137 @@
+name: upstream-sync
+
+# 上游 RuoJi6/ARTEX 发布新 Release 后，自动把对应标签合并进本仓库并创建 PR，
+# 由维护者审查后手动合并。只创建 PR，不会直接改 main。
+on:
+  schedule:
+    # 每天 03:17 UTC 检查一次；可在 Actions → upstream-sync → Run workflow 手动触发。
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Find latest upstream release
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REPO: RuoJi6/ARTEX
+        run: |
+          set -euo pipefail
+          tag="$(gh api "repos/${UPSTREAM_REPO}/releases/latest" --jq '.tag_name' 2>/dev/null || true)"
+          if [ -z "$tag" ]; then
+            echo "上游暂无公开 Release，跳过。"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # 只接受 vX.Y.Z，避免把异常标签带进分支名或 shell。
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "上游最新 Release 标签不是 vX.Y.Z：${tag}，跳过。"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "tag=${tag}"
+            echo "url=$(gh api "repos/${UPSTREAM_REPO}/releases/latest" --jq '.html_url')"
+            echo "skip=false"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Fetch upstream tag into a namespaced ref
+        if: steps.upstream.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # 不能用 git fetch --tags：本仓库与上游共用 v0.3.25 等版本号，
+          # 直接写入 refs/tags/* 会与本地发布标签冲突。
+          git fetch --no-tags https://github.com/RuoJi6/ARTEX.git \
+            "+refs/tags/${TAG}:refs/remotes/upstream/tags/${TAG}"
+          git rev-parse --verify "refs/remotes/upstream/tags/${TAG}^{commit}"
+
+      - name: Check whether sync is needed
+        id: state
+        if: steps.upstream.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.upstream.outputs.tag }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          upstream_ref="refs/remotes/upstream/tags/${TAG}"
+          if git merge-base --is-ancestor "$upstream_ref" HEAD; then
+            echo "上游 ${TAG} 已包含在 ${BASE} 中，无需同步。"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          branch="sync/upstream-${TAG}"
+          open_prs="$(gh pr list --head "$branch" --state open --json number --jq 'length')"
+          if [ "$open_prs" != "0" ]; then
+            echo "已存在 ${branch} 的开放 PR，跳过。"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Create sync branch and pull request
+        if: steps.state.outputs.skip == 'false'
+        env:
+          # PAT 需要 Contents、Workflows 和 Pull requests 写权限。
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+          TAG: ${{ steps.upstream.outputs.tag }}
+          RELEASE_URL: ${{ steps.upstream.outputs.url }}
+          BRANCH: ${{ steps.state.outputs.branch }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::请在仓库的 Actions secrets 中配置 UPSTREAM_SYNC_TOKEN。"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          upstream_ref="refs/remotes/upstream/tags/${TAG}"
+          body="$(mktemp)"
+          {
+            echo "自动同步上游 Release：${RELEASE_URL}"
+            echo
+            echo "- 上游版本：\`${TAG}\`"
+            echo "- 目标分支：\`${BASE}\`"
+            echo
+            echo "请审查上游变更、本地验证后再合并。"
+          } > "$body"
+
+          if git switch -c "$BRANCH" && \
+             git merge --no-ff --no-edit "$upstream_ref" \
+               -m "chore(upstream): 合并上游 ${TAG}"; then
+            title="chore(upstream): 合并上游 ${TAG}"
+            echo "已无冲突合并，等待审查。" >> "$body"
+          else
+            # 有冲突时不提交半成品：把分支指向上游标签提交，让 PR 显示冲突，
+            # 维护者可直接在 GitHub 或本地解决。
+            git merge --abort || true
+            git switch -C "$BRANCH" "$upstream_ref"
+            title="chore(upstream): 跟进上游 ${TAG}（存在冲突）"
+            echo "⚠️ 自动合并存在冲突，分支当前指向上游标签提交，请解决冲突后再合并。" >> "$body"
+          fi
+
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            push --force origin "$BRANCH"
+          gh pr create --base "$BASE" --head "$BRANCH" \
+            --title "$title" --body-file "$body"

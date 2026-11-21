@@ -50,6 +50,85 @@ func saveBasicAuthForTest(s *Server, body string) *httptest.ResponseRecorder {
 	return w
 }
 
+func TestBasicAuthBootstrapSeedsEnabledGate(t *testing.T) {
+	s, store := basicAuthTestServer(t)
+	const password = "bootstrap-pass-123"
+
+	if err := s.basicAuth.bootstrap("deploy-admin", password); err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	cfg := s.basicAuth.snapshot()
+	if !cfg.Enabled || cfg.Username != "deploy-admin" || cfg.Revision == "" {
+		t.Fatalf("unexpected bootstrap config: %+v", cfg)
+	}
+	if bcrypt.CompareHashAndPassword([]byte(cfg.PasswordHash), []byte(password)) != nil {
+		t.Fatal("bootstrap password does not match the stored hash")
+	}
+	if strings.Contains(store.raw, password) {
+		t.Fatal("plaintext password was persisted")
+	}
+	if !strings.Contains(store.raw, `"enabled":true`) {
+		t.Fatalf("stored config must be enabled: %s", store.raw)
+	}
+
+	// A second deployment pass must not overwrite the persisted credential.
+	if err := s.basicAuth.bootstrap("deploy-admin", "another-pass-456"); err != nil {
+		t.Fatalf("second bootstrap: %v", err)
+	}
+	if got := s.basicAuth.snapshot(); got.PasswordHash != cfg.PasswordHash {
+		t.Fatal("bootstrap overwrote an existing configuration")
+	}
+}
+
+func TestBasicAuthBootstrapLeavesExistingRowAlone(t *testing.T) {
+	s, store := basicAuthTestServer(t)
+	if w := saveBasicAuthForTest(s, `{"enabled":false,"username":"ui-managed","password":"ui-pass-123"}`); w.Code != 200 {
+		t.Fatalf("save settings: %d %s", w.Code, w.Body.String())
+	}
+	before := store.raw
+	if err := s.basicAuth.bootstrap("env-admin", "env-pass-123"); err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	if store.raw != before {
+		t.Fatal("bootstrap must not touch a settings row created by the UI")
+	}
+	if cfg := s.basicAuth.snapshot(); cfg.Enabled || cfg.Username != "ui-managed" {
+		t.Fatalf("unexpected config after bootstrap: %+v", cfg)
+	}
+}
+
+func TestBasicAuthBootstrapValidation(t *testing.T) {
+	cases := []struct {
+		name     string
+		username string
+		password string
+	}{
+		{"missing user", "", "long-enough-pass"},
+		{"missing password", "deploy-admin", ""},
+		{"colon in user", "deploy:admin", "long-enough-pass"},
+		{"short password", "deploy-admin", "short"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, store := basicAuthTestServer(t)
+			if err := s.basicAuth.bootstrap(tc.username, tc.password); err == nil {
+				t.Fatal("bootstrap accepted an invalid configuration")
+			}
+			if store.raw != "" {
+				t.Fatalf("invalid config was persisted: %s", store.raw)
+			}
+			if cfg := s.basicAuth.snapshot(); cfg.Enabled {
+				t.Fatalf("invalid config enabled the gate: %+v", cfg)
+			}
+		})
+	}
+
+	s, _ := basicAuthTestServer(t)
+	if err := s.basicAuth.bootstrap("", ""); err != nil {
+		t.Fatalf("empty environment should be a no-op: %v", err)
+	}
+}
+
 type blockedBasicAuthStore struct {
 	basicAuthSettingsStore
 	started  chan basicAuthConfig

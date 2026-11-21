@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -74,6 +75,62 @@ func (g *basicAuthGate) snapshot() basicAuthConfig {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.cfg
+}
+
+// bootstrap seeds the database configuration from the deployment environment.
+// It is deliberately one-shot: once a row exists (including a disabled one),
+// the UI-managed value stays authoritative across restarts and image upgrades.
+// This is what lets a fresh production deployment require authentication on the
+// very first request without opening the setup page first.
+func (g *basicAuthGate) bootstrap(username, password string) error {
+	username = strings.TrimSpace(username)
+	if username == "" && password == "" {
+		return nil
+	}
+	if username == "" || password == "" {
+		return fmt.Errorf("ARTEX_BASIC_AUTH_USER 与 ARTEX_BASIC_AUTH_PASSWORD 必须同时设置")
+	}
+	if !validBasicUsername(username) {
+		return fmt.Errorf("ARTEX_BASIC_AUTH_USER 不能为空、超过 128 字节或包含冒号及控制字符")
+	}
+	if msg := validatePassword(password); msg != "" {
+		return fmt.Errorf("ARTEX_BASIC_AUTH_PASSWORD 不合法：%s", msg)
+	}
+
+	g.saveMu.Lock()
+	defer g.saveMu.Unlock()
+	if g.store == nil {
+		return fmt.Errorf("数据库不可用，无法初始化 HTTP Basic Auth")
+	}
+	if _, ok, err := g.store.GetSetting(basicAuthKey); err != nil {
+		return err
+	} else if ok {
+		return nil
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("密码加密失败: %w", err)
+	}
+	cfg := basicAuthConfig{
+		Enabled:      true,
+		Username:     username,
+		PasswordHash: string(hash),
+		Revision:     uuid.NewString(),
+	}
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), basicAuthSaveTimeout)
+	defer cancel()
+	if err := g.store.SetSettingContext(ctx, basicAuthKey, string(data)); err != nil {
+		return err
+	}
+	g.mu.Lock()
+	g.cfg = cfg
+	g.mu.Unlock()
+	log.Printf("[auth] 已根据环境变量初始化 HTTP Basic Auth（用户名: %s）", username)
+	return nil
 }
 
 func validBasicUsername(username string) bool {
