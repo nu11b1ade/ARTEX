@@ -10,7 +10,7 @@
 - Norma 依赖切换到 `nu11b1ade/Norma` 的 `v0.4.3` 正式发布版本。
 - Docker 镜像迁移到 Docker Hub `nullblade/artex`；移除 Vercel 在线 Demo 部署链路。
 
-## [0.3.30] - 2026-11-14
+## [0.3.30] - 2026-11-21
 
 ### 新增与改进
 
