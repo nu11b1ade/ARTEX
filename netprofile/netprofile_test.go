@@ -6,6 +6,7 @@ import (
 )
 
 func TestApplyFillsBrowserDefaults(t *testing.T) {
+	t.Setenv("ARTEX_HTTP_USER_AGENT", UserAgent)
 	req, _ := http.NewRequest(http.MethodPost, "https://example.test/api", nil)
 	Apply(req)
 
@@ -38,6 +39,7 @@ func TestApplyPreservesCallerHeaders(t *testing.T) {
 }
 
 func TestNavigateAddsFetchMetadata(t *testing.T) {
+	t.Setenv("ARTEX_HTTP_USER_AGENT", UserAgent)
 	req, _ := http.NewRequest(http.MethodGet, "https://example.test/", nil)
 	Navigate(req)
 

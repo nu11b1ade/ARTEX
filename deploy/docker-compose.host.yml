@@ -51,6 +51,7 @@ services:
       ARTEX_LLM_MODEL: ${ARTEX_LLM_MODEL:-}
       ARTEX_LLM_BASE_URL: ${ARTEX_LLM_BASE_URL:-}
       ARTEX_LLM_PROXY: ${ARTEX_LLM_PROXY:-}
+      ARTEX_HTTP_USER_AGENT: ${ARTEX_HTTP_USER_AGENT:-}
       # JWT/Basic Auth Cookie 的签名密钥放到独立卷，更新重建容器后登录态不失效。
       ARTEX_JWT_KEY_PATH: /app/state/jwt.key
       # 首次启动种入 HTTP Basic Auth；数据库已有配置时不会覆盖。

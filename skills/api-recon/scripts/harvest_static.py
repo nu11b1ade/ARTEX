@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-harvest_static.py <BASE_URL> <OUTDIR>
+harvest_static.py <BASE_URL> <OUTDIR> [--user-agent VALUE]
 
 参考模板 — 非通用成品。执行前须按目标站点调整，常见改动：
   - extract_endpoints 正则（endpoint 方言）
@@ -16,21 +16,56 @@ Static SPA bundle harvester. Framework-agnostic; tuned for webpack + Vite.
 
 Stdlib only. TLS verification is disabled (recon against self-signed/internal hosts).
 """
-import sys, os, re, ssl, json, gzip, zlib, urllib.request, urllib.parse
+import sys, os, re, ssl, gzip, zlib, secrets, json, argparse, urllib.request, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
 CTX = ssl.create_default_context(); CTX.check_hostname = False; CTX.verify_mode = ssl.CERT_NONE
-# 使用普通桌面 Chrome 的请求特征，避免把 api-recon/ARTEX 暴露给目标。
-UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+USER_AGENTS = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 Edg/157.0.0.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 Edg/157.0.0.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:159.0) Gecko/20100101 Firefox/159.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:159.0) Gecko/20100101 Firefox/159.0',
+    'Mozilla/5.0 (X11; Linux x86_64; rv:159.0) Gecko/20100101 Firefox/159.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.1 Safari/605.1.15',
+)
+
+
+def user_agent(value=None):
+    """Explicit value > environment > random sample; explicit empty omits UA."""
+    explicit = value is not None
+    if value is None:
+        value = os.environ.get("ARTEX_HTTP_USER_AGENT", "")
+    value = value.strip(" ")
+    if not all(32 <= ord(c) <= 126 for c in value):
+        return secrets.choice(USER_AGENTS)
+    if value or explicit:
+        return value
+    return secrets.choice(USER_AGENTS)
+
+
 HEADERS = {
-    "User-Agent": UA,
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
     "Accept-Language": "en-US,en;q=0.9",
     "Accept-Encoding": "gzip, deflate",
 }
 
+
 def _decoded(data, encoding):
-    """urllib 不会自动解压 Content-Encoding，这里补齐 gzip/deflate。"""
+    """urllib does not automatically decode gzip/deflate response bodies."""
     enc = (encoding or "").lower()
     try:
         if "gzip" in enc:
@@ -44,10 +79,21 @@ def _decoded(data, encoding):
         pass
     return data
 
-def fetch(url, binary=False):
+
+def request_headers(ua):
+    headers = dict(HEADERS)
+    if ua:
+        headers["User-Agent"] = ua
+    return headers
+
+
+def fetch(url, binary=False, user_agent_value=None):
     try:
-        req = urllib.request.Request(url, headers=HEADERS)
-        with urllib.request.urlopen(req, context=CTX, timeout=25) as r:
+        ua = user_agent(user_agent_value)
+        req = urllib.request.Request(url, headers=request_headers(ua))
+        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=CTX))
+        opener.addheaders = []  # Do not reintroduce Python-urllib's default UA.
+        with opener.open(req, timeout=25) as r:
             data = _decoded(r.read(), r.headers.get("Content-Encoding"))
             return (data if binary else data.decode("utf-8", "ignore")), r.status
     except Exception as e:
@@ -134,14 +180,17 @@ def extract_routes(js_text):
 
 # ---- main -------------------------------------------------------------------
 def main():
-    if len(sys.argv) < 3:
-        print("usage: harvest_static.py <BASE_URL> <OUTDIR>"); sys.exit(1)
-    base, outdir = sys.argv[1], sys.argv[2]
+    ap = argparse.ArgumentParser()
+    ap.add_argument("base"); ap.add_argument("outdir")
+    ap.add_argument("--user-agent", default=None, help="User-Agent override; default: ARTEX_HTTP_USER_AGENT or random browser sample")
+    args = ap.parse_args()
+    base, outdir = args.base, args.outdir
+    ua = user_agent(args.user_agent)
     if not base.startswith("http"): base = "https://" + base
     jsdir = os.path.join(outdir, "js"); os.makedirs(jsdir, exist_ok=True)
 
     print(f"[*] entry: {base}")
-    html, status = fetch(base)
+    html, status = fetch(base, user_agent_value=ua)
     open(os.path.join(outdir, "index.html"), "w").write(html)
     origin = origin_of(base)
 
@@ -159,7 +208,7 @@ def main():
         if not fn.endswith(".js"): return None
         lp = os.path.join(jsdir, fn)
         if url in have: return have[url]
-        data, st = fetch(url, binary=True)
+        data, st = fetch(url, binary=True, user_agent_value=ua)
         if st == 200 and data and not data[:15].lstrip().startswith(b"<"):
             open(lp, "wb").write(data); have[url] = lp; return lp
         return None

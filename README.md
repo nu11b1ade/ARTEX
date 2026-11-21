@@ -197,7 +197,8 @@ cp config.example.json config.json   # 填好 database 连接
 # 1) 前端静态导出
 cd web && npm ci && npm run build:static && cd ..
 # 2) 拷进内嵌目录
-cp -r web/out server/webui/dist
+mkdir -p server/webui/dist
+cp -r web/out/. server/webui/dist
 # 3) 编译（-tags embedui 才内嵌前端）
 CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 ./start.sh
@@ -357,7 +358,8 @@ cp -r <解压目录>/skills ./ && cp <解压目录>/artex ./
 ```bash
 git pull
 cd web && npm ci && npm run build:static && cd ..
-cp -r web/out server/webui/dist
+mkdir -p server/webui/dist
+cp -r web/out/. server/webui/dist
 CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 # 重启 ./start.sh
 ```
@@ -380,6 +382,10 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 
 **LLM**：`export ANTHROPIC_API_KEY=sk-...`（或 `OPENAI_API_KEY`），也可在 UI 的「LLM 配置」页填写。
 可选：`ARTEX_LLM_PROVIDER` / `ARTEX_LLM_MODEL` / `ARTEX_LLM_BASE_URL` / `ARTEX_LLM_PROXY`。
+
+**HTTP User-Agent**：内置 WebFetch（worker / planner / main / chat）、资产 HTTP 自动补全、出口连通性探测、HTTP 自定义工具、请求重放器、GitHub 自更新和可选的 `harvest_static.py` / `spider_mpa.py` 默认从 20 个浏览器 UA 样本中随机抽选，不携带工具名称。Go 每次逻辑请求选择一次，重定向及 WebFetch 的代理失败直连重试复用同一个值；Python 脚本每次运行选择一次，入口、下载与重试保持一致。随机抽选允许重复，不依赖 AI 服务。通过 `ARTEX_HTTP_USER_AGENT` 可指定固定值；留空或非法值使用随机策略。直接运行时导出环境变量并重启服务，Docker 在 `.env` 配置后重建容器。Python 的 `--user-agent VALUE`、自定义工具和重放器中的显式 UA 优先，显式空值仍可省略此头。值去除首尾空格，仅接受可打印 ASCII。记录代理保留已有 UA 及显式省略语义。UA 随机化不代表 TLS、Cookie 或其他浏览器特征同步改变，也不保证无法识别客户端。此设置不影响浏览器、SDK 联网搜索、LLM / MCP / Webhook 服务通信或外部独立工具；本仓库未包含 phpfinger，其 `--user-agent` 需在该工具中单独配置。
+
+完整排查范围、额外发现及未接管的服务通信见 [HTTP 请求标识排查](HTTP_USER_AGENT.md)。
 
 **并发**：每个任务的 work agent 数在「系统设置」里配置（默认 3）。
 
@@ -675,3 +681,112 @@ https://github.com/oritera/Cairn
 ### 开源协议
 
 本项目采用 **GNU Affero General Public License v3.0（AGPL-3.0）** 授权，完整条款见仓库根目录的 [LICENSE](LICENSE) 文件。
+
+## MCP 服务端（供外部智能体编排任务）
+
+ARTEX 可以作为 MCP 服务端，让外部智能体（个人助手、bot 等）查看任务与漏洞、创建任务、暂停或恢复任务。
+
+注意区分：「系统 → MCP」页面管理的是 ARTEX 自己的 agent **去调用**的外部 MCP；本文说的是 ARTEX **对外提供**的 MCP 端点。
+
+#### 开启与接入
+
+1. 「系统设置 → 系统与账号 → MCP 服务端」打开开关。默认关闭，关闭时 `/mcp` 返回 404。
+2. 在同一处「新建令牌」，选择权限范围。令牌只显示一次。
+3. 在智能体里配置：
+
+| 项 | 值 |
+| --- | --- |
+| 地址 | `https://<你的 ARTEX 地址>/mcp` |
+| 传输 | Streamable HTTP（无状态，只响应 `application/json`，不提供 SSE，不支持 stdio） |
+| 鉴权 | 请求头 `Authorization: Bearer artex_mcp_...` |
+
+```bash
+curl -s https://artex.example.com/mcp \
+  -H 'Authorization: Bearer artex_mcp_xxx' -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+#### 无法使用 HTTP Basic Auth
+
+`/mcp` **不经过** HTTP Basic Auth 验证，也**不接受** Basic 账号密码、ARTEX 登录密码或管理员登录后的 JWT，只认访问令牌。
+
+原因：一个 HTTP 请求只有一个 `Authorization` 头，外部智能体无法同时带上 Basic 凭证和 Bearer 令牌。因此：
+
+- 即使启用了 HTTP Basic Auth，`/mcp` 仍可直接凭访问令牌访问，Basic Auth 不会给它加一层保护。
+- 需要限制谁能连 `/mcp` 的话，请用下文的「来源白名单」，不要依赖 Basic Auth。
+- 公网暴露请使用 HTTPS，令牌是明文放在请求头里的。
+
+#### 来源白名单
+
+在「MCP 服务端」卡片的「来源白名单」里填写允许调用 `/mcp` 的来源地址，每行一个 IP 或 CIDR（如 `203.0.113.7`、`10.0.0.0/8`，支持 IPv6）。留空表示不限制来源。
+
+- 白名单在令牌之前检查：不在名单内的来源即使持有有效令牌也会被拒绝，返回 `403`，响应里带有服务器看到的来源地址，便于排查。
+- 白名单只作用于 `/mcp`，不影响网页和管理 API，填错不会把自己锁在后台之外。
+- **部署在反向代理之后**：此时直连地址永远是代理。需要把代理地址填进「可信代理」，ARTEX 才会改用 `X-Forwarded-For` 里的地址作为来源（从右往左取第一个不属于可信代理的地址）。不填可信代理时该请求头一律忽略，避免调用方伪造来源。代理需要把真实来源追加到该请求头，例如 nginx 的 `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`。
+- 卡片里会显示「服务器看到的你当前的来源地址」，可用来确认可信代理是否配置正确。
+
+#### 权限范围与工具
+
+令牌只能看到、调用它的权限范围内的工具。
+
+| 权限范围 | 工具 | 说明 |
+| --- | --- | --- |
+| `read` | `list_tasks` | 列出任务，可按 `company_id`、`category_id`、`status` 筛选 |
+| `read` | `get_task` | 单个任务的状态、运行时长、目标完成数、漏洞数；用它轮询进度 |
+| `read` | `get_task_graph` | 任务的探索图总览 |
+| `read` | `list_task_findings` | 任务的确认漏洞（不含原始请求/响应流量） |
+| `read` | `list_companies` / `list_task_categories` / `list_llm_profiles` | 建任务时可选的企业、分类、模型配置（不含 API Key） |
+| `task:create` | `spawn_task` | 新建并启动任务，可带 `company_ids`、`category_id` |
+| `task:control` | `pause_task` / `resume_task` / `add_task_hint` | 暂停、恢复、补充提示 |
+
+ARTEX 没有独立的「项目」实体。智能体说的“某个项目”对应某个企业或某个任务分类下的一组任务。
+
+不会暴露的能力：建/改自定义工具、MCP、skill，workspace 文件读写，LLM 密钥，系统设置。
+
+#### 令牌的限制项
+
+- **限定企业**：勾选后，令牌只能在这些企业下建任务（必须带 `company_ids`，且目标地址须归属这些企业的范围），也只能看到、控制这些企业下的任务，其余任务对它表现为不存在。这是把任务绑定到企业的资产范围，不是网络层拦截；要硬性限制任务能访问什么，请配合资产拦截规则。
+- **未结束任务上限**：该令牌创建的、尚未结束的任务数（含暂停和排队）。
+- **每小时建任务上限**：按该令牌过去一小时创建的任务数计，任务删除后仍计入。
+- **有效期**与**吊销**：吊销立即生效，不可恢复。
+
+#### 审计
+
+每次工具调用都会记录：令牌、工具、参数、是否成功、失败原因、来源地址、时间，包括因权限不足被拒绝的调用。在设置页的「调用审计」查看，保留最近 20000 条。
+
+#### 安全提示
+
+- 创建任务会对目标发起真实的安全测试，只把 `task:create` 令牌交给可信的智能体，并尽量限定企业、设置限额。
+- 任务描述、漏洞摘要等返回内容可能包含来自被测目标的文本，对智能体而言是不可信输入，可能夹带提示注入。
+- 带 `Origin` 头的跨源浏览器请求会被拒绝（403），`/mcp` 不发送 CORS 头。
+
+### 反向代理部署（HTTPS / 只开放 443）
+
+前端和 API/SSE 都由同一个后端端口（默认 `:8787`）提供，实时活动流默认走**同源**地址，因此**无需配置 `NEXT_PUBLIC_SSE_BASE`**，公网只开放 443、把 8787 留在内网即可。
+
+SSE 是长连接 + 持续推送，反代**必须关闭缓冲**，否则浏览器能连上却收不到事件（表现为活动流一直转圈）。Nginx 示例：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name your.domain.com;
+    # ssl_certificate / ssl_certificate_key ...
+
+    location / {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # SSE 关键项：关缓冲、长超时、HTTP/1.1
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+    }
+}
+```
+
+> 仅当 SSE 需要走与页面不同的来源（如独立子域）时，才在**构建期**设置 `NEXT_PUBLIC_SSE_BASE`（该变量在 `next build` 时固化进静态包，容器运行时再设无效）。
+
+---

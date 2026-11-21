@@ -9,9 +9,13 @@
 // 等仍由 net/http 的 Transport 决定。
 package netprofile
 
-import "net/http"
+import (
+	"net/http"
 
-// UserAgent 是 ARTEX 主动请求时使用的桌面 Chrome UA。
+	"github.com/Autumn-27/artex/internal/httpidentity"
+)
+
+// UserAgent 是保留的桌面 Chrome 样本；实际默认值由 httpidentity 的浏览器池选择。
 //
 // 刻意不带产品名、版本号或构建信息。容器默认运行在 Linux 上，因此使用
 // Linux 桌面 UA，避免 UA 与浏览器实际平台明显冲突。Chrome 大版本更新后
@@ -33,7 +37,7 @@ const (
 // User-Agent / Accept / Accept-Language，不伪造 Sec-Fetch-*——这些字段
 // 依赖真实页面的 origin，凭空填写反而更像自动化客户端。
 func Apply(req *http.Request) {
-	setIfEmpty(req, "User-Agent", UserAgent)
+	applyUserAgent(req)
 	setIfEmpty(req, "Accept", acceptAny)
 	setIfEmpty(req, "Accept-Language", AcceptLanguage)
 }
@@ -42,7 +46,7 @@ func Apply(req *http.Request) {
 // Fetch Metadata。用于对站点的探活/爬取请求（enrich、出口 IP 探测、
 // Release 资产下载等），这类请求本来就是顶层导航形态。
 func Navigate(req *http.Request) {
-	setIfEmpty(req, "User-Agent", UserAgent)
+	applyUserAgent(req)
 	setIfEmpty(req, "Accept", acceptHTML)
 	setIfEmpty(req, "Accept-Language", AcceptLanguage)
 	setIfEmpty(req, "Upgrade-Insecure-Requests", "1")
@@ -55,5 +59,12 @@ func Navigate(req *http.Request) {
 func setIfEmpty(req *http.Request, name, value string) {
 	if req.Header.Get(name) == "" {
 		req.Header.Set(name, value)
+	}
+}
+
+// Preserve an explicit empty UA as well as caller-selected values.
+func applyUserAgent(req *http.Request) {
+	if _, present := req.Header["User-Agent"]; !present {
+		httpidentity.Apply(req)
 	}
 }

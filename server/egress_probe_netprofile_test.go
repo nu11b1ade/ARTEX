@@ -11,6 +11,7 @@ import (
 )
 
 func TestEgressProbePreservesBrowserHeaders(t *testing.T) {
+	t.Setenv("ARTEX_HTTP_USER_AGENT", netprofile.UserAgent)
 	for _, proxied := range []bool{false, true} {
 		name := "direct"
 		if proxied {
