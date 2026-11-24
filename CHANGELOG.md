@@ -10,6 +10,28 @@
 - Norma 依赖切换到 `nu11b1ade/Norma` 的 `v0.4.3` 正式发布版本。
 - Docker 镜像迁移到 Docker Hub `nullblade/artex`；移除 Vercel 在线 Demo 部署链路。
 
+## [0.3.31] - 2026-11-24
+
+### 新增与改进
+
+- 新增一键备份与迁移（#160）：在系统配置中下载包含数据库、任务工作区、会话、流量、证据、归档包、MITM 证书和 skills 的单个备份文件，并可在另一实例上传恢复。恢复先校验备份，再在重启时整体替换；数据库替换失败时保留原数据，中断后下次启动继续完成文件替换。
+- 新增原生 Google Gemini API（`gemini`）协议支持（#170）：可直接接入 Google AI Studio 或原生兼容网关，支持流式与非流式调用、Base URL 自动归一化及模型列表拉取，并在设置页与类型定义中补齐对应配置说明。
+- 新增发现页历史漏洞一键清理功能（#157）：支持按「全部 / 当前筛选 / 已勾选」范围通过 `DELETE /api/exploration/findings` 原子删除漏洞记录及其来源探索节点、复测记录和归并关系，命中归档或软删中任务时自动拦截返回 409。
+- 支持热更新运行中任务的 Worker 并发（#171）：任务详情可设置 0（跟随全局）或 1–50；全局工作并发与 Worker 池变更会同步至跟随全局的任务。增容立即补起 Worker，缩容等待当前意图完成后退出，不中断正在执行的工作；详情展示实际存活 Worker 数与目标数。配置持久化，重启恢复时沿用。
+- `PATCH /api/tasks/{id}` 新增 `worker_count`；任务接口返回 `worker_actual_count`（存活池循环，含缩容等待中的 Worker）与 `worker_target_count`（有效目标数），与 `in_flight`（执行中意图数）区分。
+- 更新 README，补充备份迁移说明及上游 ChainReactors 维护、商业授权与贡献许可说明的链接。
+
+### 修复
+
+- 修复运行中任务仍使用旧 Worker 池模型配置的问题（#141）：即使并发数和 slot 名称不变，保存新的 profile 绑定也会替换运行时 Worker；旧配置不可用的空闲 Worker 立即退出，正在执行的 Worker 完成当前意图后切换，新意图不再由旧绑定领取。任务模型链不覆盖显式 Worker 池绑定，历史 blocked 意图不自动重跑。
+- 修复请求重发器（Repeater）将原始请求目标重新解析并规范化 URL 的问题（#163）：前后端拆分 scheme/authority 与原始 request-target，避免查询串特殊字符被自动百分号编码或 `../` 路径段被折叠。
+
+### 二开兼容
+
+- Repeater 在保留原始 request-target 的同时沿用 `netprofile.Apply`，保留现有浏览器请求头、显式覆盖和 UA 配置。
+- 保留 MCP 服务端、Norma 二开依赖、Docker Hub 发布源、部署脚本与镜像内 UV/UVX、JADX、Apktool、vulnx 工具。
+- 两种 Compose 部署透传 `GEMINI_API_KEY`；生产 Nginx 模板对备份接口启用大包流式上传。
+
 ## [0.3.30] - 2026-11-21
 
 ### 新增与改进
