@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/internal/httpidentity"
+	"github.com/Autumn-27/artex/netprofile"
 
 	"github.com/miekg/dns"
 	"github.com/projectdiscovery/dnsx/libs/dnsx"
@@ -231,7 +231,7 @@ func (e *Engine) doHTTP(id int64, rawURL string) {
 	if err != nil {
 		return
 	}
-	httpidentity.Apply(req)
+	netprofile.Navigate(req)
 	resp, err := e.client.Do(req)
 	if err != nil {
 		return

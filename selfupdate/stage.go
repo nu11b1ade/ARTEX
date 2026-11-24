@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/httpidentity"
+	"github.com/Autumn-27/artex/netprofile"
 )
 
 // sumsAsset 是 release.yml 生成的校验和清单，覆盖 Release 里全部 zip。
@@ -231,7 +231,7 @@ func get(ctx context.Context, c *http.Client, rawURL string) (io.ReadCloser, err
 	if err := checkURL(req.URL); err != nil {
 		return nil, err
 	}
-	httpidentity.Apply(req)
+	netprofile.Navigate(req)
 	resp, err := c.Do(req)
 	if err != nil {
 		return nil, err

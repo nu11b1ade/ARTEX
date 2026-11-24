@@ -4,30 +4,17 @@
 
 AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
-<p>
-  <a href="https://www.chainreactors.ai" target="_blank" rel="noopener noreferrer">
-    <img src="screenshots/chainreactors.png" alt="ChainReactors" height="45" />
-  </a>
-</p>
-
-🌐 **在线 Demo**： [https://artex-demo-ruoji6.vercel.app/](https://artex-demo-ruoji6.vercel.app/)
-
 </div>
 
-本仓库（[RuoJi6/ARTEX](https://github.com/RuoJi6/ARTEX)）Fork 自 [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX)，保留上游原始提交历史与 AGPL-3.0 许可证，现由 [ChainReactors](https://www.chainreactors.ai) 持续维护。程序发布包从本仓库 Releases 下载，Docker 镜像 [ruoji6/artex](https://hub.docker.com/r/ruoji6/artex) 由本仓库 GitHub Actions 构建并发布。
+本仓库为二次开发版本 [nu11b1ade/ARTEX](https://github.com/nu11b1ade/ARTEX)，基于 [RuoJi6/ARTEX](https://github.com/RuoJi6/ARTEX) 的 v0.3.25 正式版本迁移，并保留 https://github.com/Autumn-27/ARTEX 的原始提交历史与 AGPL-3.0 许可证。Norma 依赖已切换到 [nu11b1ade/Norma](https://github.com/nu11b1ade/Norma) 的 `v0.4.3` 正式发布版本；Docker 镜像地址为 [nullblade/artex](https://hub.docker.com/r/nullblade/artex)，由本仓库 GitHub Actions 构建发布。
 
 ---
-## 致谢 
-米斯特安全团队
+上游 [RuoJi6/ARTEX](https://github.com/RuoJi6/ARTEX) 现由 [ChainReactors](https://www.chainreactors.ai) 持续维护；上游商业授权与贡献许可说明见[上游 README](https://github.com/RuoJi6/ARTEX#开源协议)。
 
-洺熙
-
-wowo
-
+## 致谢
+致谢米斯特安全团队
 
 ## 截图预览
-
-> 完整交互见[在线 Demo](https://artex-demo-ruoji6.vercel.app/)。
 
 | 仪表盘（总览 / Token 消耗 / 活动流） | 任务列表 |
 | :---: | :---: |
@@ -74,41 +61,13 @@ wowo
 - 按**项目**或**任务**维度选择要同步的目标与资产类型（域名 / 子域 / IP / 端口 / 站点 / 端点…）；
 - 一键导入并按公司资产范围归并，直接进入 ARTEX 的资产图供 agent 探索使用。
 
----
+## 任务情报
 
-## 部署自己的在线 Demo（随正式 Release 自动更新）
+在「系统配置 → 任务情报」开启 **Agent 自动记录**，即可在任务详情的「任务情报」中集中查看凭据、重要线索和敏感数据。此开关默认关闭；关闭时不向 Agent 注入情报工具、附加字段或提示，不启动额外总结 Agent，已有记录仍可查看。开启会增加提示及上报的 Token 消耗，对后续 Agent 执行生效；已在运行的会话可能仍保留旧工具描述，关闭后服务端立即拒绝新增情报。
 
-Demo 只运行 `web/` 前端，构建时启用 `NEXT_PUBLIC_MOCK=1`，不需要 Go、PostgreSQL 或模型密钥。界面使用模拟数据，不执行真实扫描。
+Worker 可调用 `record_intelligence`，或在 `record_fact` 的单条/批量事实中附带 `intelligence` 数组一起提交。`insert_assets` 本次提交的服务 `auth` 自动登记为未验证凭据，避免重复上报。任务、执行节点由系统绑定，记录需要真实来源证据；获取凭据不等于登录成功。
 
-发布链路：正式版本的程序包、`SHA256SUMS` 和 Docker 镜像全部成功发布 → `release.yml` 的 `demo` job 调用 `demo.yml` → 检出该版本标签的提交 → 构建 Mock 前端 → 部署至 Vercel 的固定生产域名。普通 main 推送、仅创建标签、失败的发布、草稿和预发布版本都不会更新 Demo。新版本功能的演示数据仍需由维护者同步维护 `web/src/lib/mock/`。
-
-### 首次配置 Vercel
-
-1. 在自己的 Vercel 账号创建空项目，设置名称（例如 `artex-demo-ruoji6`）。保持 **Git 未连接**，避免每次提交都自动部署。`web/vercel.json` 也禁用了 Git 自动部署。
-2. 在 **Settings → Build and Deployment** 中选择 **Next.js**、Node.js **22.x**，安装命令可覆盖为 `npm ci`，构建命令为 `npm run build`，Output Directory 保持默认。**Root Directory 留空**：此工作流从检出的 `web/` 目录调用 Vercel CLI，不能再填一层 `web`。
-3. 在项目的 **Environment Variables** 中添加 `NEXT_PUBLIC_MOCK=1`，至少应用于 **Production**。不要设置 `NEXT_EXPORT=1`，也不要填写数据库连接或模型密钥。
-4. 在项目 **Settings → General** 复制 **Project ID**；在团队 **Settings → General** 复制 **Team ID**（对应 `VERCEL_ORG_ID`）。确认 **Domains** 中有准备使用的生产域名。
-5. 在 Vercel **Account Settings → Tokens** 创建部署 Token，范围选择项目所在团队，并设置适当有效期。将其直接保存到 GitHub 仓库 **Settings → Secrets and variables → Actions → Secrets**，名称为 `VERCEL_TOKEN`。令牌不要写入仓库、README 或聊天；到期后更新这个 Secret。
-
-在同一 GitHub 设置页的 **Variables** 中添加：
-
-| 变量 | 值 |
-| --- | --- |
-| `VERCEL_ORG_ID` | Vercel Team ID |
-| `VERCEL_PROJECT_ID` | Vercel Project ID |
-| `DEMO_URL` | 固定公开生产网址，含 `https://`，例如 `https://artex-demo-ruoji6.vercel.app` |
-
-### 首次部署与重试
-
-将配置合并到默认分支后，打开 **Actions → deploy-demo → Run workflow**，分支选 `main`，tag 留空或填写当前最新正式版（例如 `v0.3.21`）。工作流只接受已发布且包含五个平台程序包和校验文件的最新正式版，也能部署尚未包含此工作流的历史正式版。无需重新发 Release 或移动已有标签。
-
-工作流会将这个专用 Demo 项目的框架设为 Next.js、Node 设为 22.x、根目录设为空、安装命令设为 `npm ci`、构建命令设为 `npm run build`，并确保 Production 环境的 `NEXT_PUBLIC_MOCK=1`，随后绑定 `DEMO_URL` 指定的域名。请使用独立项目；后续部署会继续维护这些配置。
-
-成功后访问生产域名，并检查 `/demo-version.json` 中的 `tag`、`commit` 和 `mock: true`。确认可访问后，将 README 顶部和截图区域的旧 Demo 链接一起改为自己的生产域名。
-
-此后按正常流程发布更高版本即可自动更新 Demo。若 Demo 部署失败，已发布的程序包和镜像仍然有效，旧 Demo 通常继续提供服务；修复设置后单独重跑 `deploy-demo`，不必重新发布整个 Release。两个版本同时发布时，部署串行执行，并在构建前、上线前检查 latest，避免已过期的构建覆盖新版。
-
-这里采用发布流程直接调用部署 job，是因为使用 `GITHUB_TOKEN` 创建的 Release 不会继续触发另一个 `release: published` 工作流。`demo.yml` 也监听网页手工发布的 Release，经过同样的正式版、完整发布包和 latest 检查后部署；手工重试则运行 `deploy-demo`。
+页面支持分类、标题/上报者搜索、状态筛选、分页、状态更新及来源查看。凭据、敏感数据的正文和来源证据直接展示在列表及详情中，无需额外点击显示。直接关联任务的记录标明继承且只读；在资产页选择一项资产后点击「关联情报」可查看同一份记录。情报随任务归档、恢复和删除；新版归档格式为 v4，仍支持读取 v1–v3。此功能不自动补提取历史会话。
 
 ---
 
@@ -119,40 +78,112 @@ Demo 只运行 `web/` 前端，构建时启用 `NEXT_PUBLIC_MOCK=1`，不需要 
 ### 方式一：一键安装脚本（推荐）
 
 ```bash
-git clone https://github.com/RuoJi6/ARTEX.git
+git clone https://github.com/nu11b1ade/ARTEX.git
 cd ARTEX
 ./install.sh
 ```
 
-脚本会：检测 / 自动安装 Docker → 让你选 **① 全部 Docker** 或 **② 本地编译运行**：
+脚本会：检测 / 自动安装 Docker → 让你选 **① 全部 Docker**、**② 本地编译运行** 或 **③ 生产部署（Host + Nginx HTTPS）**：
 
 - **① 全部 Docker**：填一个 Postgres 密码（可回车随机）→ 自动写 `.env` → `docker compose up -d`。
 - **② 本地运行**：选数据库（连已有 / 用 Docker 起一个）→ 生成 `config.json` → `go` 编译内嵌单二进制 → 启动。
+- **③ 生产部署**：Host 网络让 Agent 可自主监听动态端口；自动部署 Nginx、HTTPS 和首次访问即生效的 HTTP Basic Auth，ARTEX Web/API、流量代理与 PostgreSQL 只监听回环地址。
 
-装好后打开 **http://localhost:8787**（首次进入 `/setup` 设置管理员密码）。
+装好后打开 **http://localhost:8787**（首次进入 `/setup` 设置管理员密码）。生产部署则访问 **https://域名或服务器 IP**，先通过 Basic Auth，再完成 `/setup`。
 
 ### 方式二：Docker Compose（手动）
 
 ```bash
-git clone https://github.com/RuoJi6/ARTEX.git
+git clone https://github.com/nu11b1ade/ARTEX.git
 cd ARTEX
 cp .env.example .env          # 填 POSTGRES_PASSWORD、可选 ANTHROPIC_API_KEY
-docker compose up -d          # 拉取 ruoji6/artex 镜像 + postgres
+docker compose up -d          # 拉取 nullblade/artex 镜像 + postgres
 # → http://localhost:8787
 ```
 
-镜像已含常用工具（ripgrep/curl/vim/npm/nmap…）；`./skills` 与 `./data` 以绑定挂载持久化。
+镜像已含常用工具（ripgrep/curl/vim/npm/nmap，以及 JDK 17 / JADX / Apktool / vulnx）；`./skills` 与 `./data` 以绑定挂载持久化。
 
-`.env` 中默认 `ARTEX_IMAGE=ruoji6/artex`，`ARTEX_TAG=latest` 使用最新镜像，也可固定为 `v0.3.17`（完整镜像地址 `ruoji6/artex:v0.3.17`）。镜像支持 `linux/amd64` 和 `linux/arm64`，Docker 会自动选择与宿主机匹配的架构，ARM64 Kali 无需自行编译。初次部署请修改 `POSTGRES_PASSWORD`；运行服务无需配置 Docker Hub 发布 Token。
+> 本仓库尚未发布 Docker 镜像时，`docker compose up -d` 会提示镜像不存在；请改用“方式四：从源码编译单二进制”，或等待维护者发布首个镜像后再走本方式。
+
+`.env` 中默认 `ARTEX_IMAGE=nullblade/artex`，`ARTEX_TAG=latest` 使用最新镜像，也可固定为 `v0.3.26`（完整镜像地址 `nullblade/artex:v0.3.26`）。镜像支持 `linux/amd64` 和 `linux/arm64`，Docker 会自动选择与宿主机匹配的架构，ARM64 Kali 无需自行编译。初次部署请修改 `POSTGRES_PASSWORD`；运行服务无需配置 Docker Hub 发布 Token。
 
 远程 MCP 可在系统设置中选择 `http`（Streamable HTTP）或 `sse`（旧版 SSE）。
 旧版 SSE 服务通常使用 `GET /sse` 建立事件流，再通过服务返回的
 `/message?sessionId=...` 接收 JSON-RPC 请求；配置时将 URL 填为 `/sse`，请求头按
 `Authorization=Bearer <token>` 填写。
 
+### 生产部署（Host 网络 + Nginx HTTPS）
+
+面向公网 / 长期运行的部署方式。与 Bridge 部署（`docker-compose.yml`）互斥：两者都会占用 80、443、8787、8788，切换前先在旧部署目录执行 `docker compose down`。
+
+```bash
+cd ARTEX
+./deploy.sh install        # 也可在 ./install.sh 菜单中选择 ③
+```
+
+安装流程会自动完成：
+
+1. 生成 / 补全 `.env`：PostgreSQL 密码、访问域名、HTTP Basic Auth 凭据，以及一个宿主空闲的 PostgreSQL 回环端口；
+2. 生成自签名证书（或导入已有证书），渲染 `deploy/nginx/site.conf`；
+3. 启动 `artex-host` 生产栈：PostgreSQL、ARTEX、Nginx 全部使用 Docker Host 网络；
+4. 等待健康检查通过，验证匿名访问确实返回 401，将访问地址与 Basic Auth 凭据写入 `deploy/state/initial-credentials.txt`（权限 600）。
+
+#### 端口与暴露面
+
+| 端口 | 监听地址 | 用途 |
+| --- | --- | --- |
+| 80 / 443 | `0.0.0.0`（公网） | Nginx 统一入口；80 跳转 443 |
+| 8787 | `127.0.0.1` | ARTEX Web/API（仅 Nginx 访问） |
+| 8788 | `127.0.0.1` | 流量录制代理（不对外） |
+| `ARTEX_PG_PORT` | `127.0.0.1` | PostgreSQL（不对外） |
+
+Host 网络让容器内的 Agent 可以自主监听动态端口（反弹 shell、临时 HTTP 服务、监听器等），无需事先在 Compose 里声明 `ports`。这些由 Agent 启动的监听端口不归部署脚本管理，公网可达性取决于进程绑定地址与主机防火墙；建议用云安全组 / ufw 只放行 80、443。
+
+#### HTTPS 证书
+
+- 默认自签名证书：SAN 包含 `localhost`、`127.0.0.1`、配置的域名和检测到的 IPv4，浏览器会提示不受信任。`ARTEX_DOMAIN` 也可以填 IPv4（如公网/NAT 地址），此时会写入 IP SAN。
+- 使用受信证书：将证书和私钥放到 `deploy/nginx/certs/fullchain.pem`、`privkey.pem`，删除同目录下的 `.self-signed` 标记，然后执行 `./deploy.sh update`。
+- 80 端口保留了 `/.well-known/acme-challenge/`，webroot 是 `deploy/nginx/webroot/`。例如：
+  ```bash
+  sudo certbot certonly --webroot -w "$PWD/deploy/nginx/webroot" -d example.com
+  sudo cp /etc/letsencrypt/live/example.com/fullchain.pem deploy/nginx/certs/fullchain.pem
+  sudo cp /etc/letsencrypt/live/example.com/privkey.pem   deploy/nginx/certs/privkey.pem
+  rm -f deploy/nginx/certs/.self-signed
+  ./deploy.sh update
+  ```
+
+#### HTTP Basic Auth
+
+- 生产部署首次启动时用 `.env` 的 `ARTEX_BASIC_AUTH_USER` / `ARTEX_BASIC_AUTH_PASSWORD` 把访问验证种入数据库，默认启用，第一次访问就必须认证。
+- 种入只发生一次；之后以 UI 的「系统配置 → HTTP Basic Auth」为准，`.env` 不会覆盖已有配置（包括在 UI 中关闭验证）。
+- 手工执行 Compose 时必须自行设置凭据，且要显式加载根目录 `.env`（Compose 默认在 `deploy/` 下找 `.env`）：
+  ```bash
+  docker compose --env-file .env -f deploy/docker-compose.host.yml up -d
+  ```
+  必需变量：`POSTGRES_PASSWORD`、`ARTEX_BASIC_AUTH_USER`、`ARTEX_BASIC_AUTH_PASSWORD`；`POSTGRES_USER`、`POSTGRES_DB` 默认 `artex`。
+
+#### 更新、检查与恢复
+
+```bash
+./deploy.sh update          # 拉新镜像、重建 ARTEX、重载 Nginx（--tag 可指定版本）
+./deploy.sh check           # 配置 / 端口暴露 / 证书 / 认证 / 数据库 / 磁盘检查
+./deploy.sh recover         # 修复配置、证书、容器与 Nginx（保留数据卷）
+./deploy.sh status          # 容器状态与访问地址
+./deploy.sh logs [服务名]    # artex / postgres / nginx
+```
+
+- `check` 会验证 8787、8788、PostgreSQL 端口只在回环监听，匿名访问返回 401，Basic Auth 凭据可用，证书未过期且 SAN 匹配，PostgreSQL 可连接，Nginx 配置有效，磁盘余量充足；有失败项时退出码非 0。Basic Auth 被视为生产部署的必检项，在 UI 中关闭后 `check` 会失败；在 UI 中改过密码导致 `.env` 凭据过期时给出警告。
+- `recover` 会先把 `.env` 与 `site.conf` 备份到 `deploy/state/`，再修复证书、配置和缺失 / 异常容器；PostgreSQL 数据卷与 `./data` 不会被删除。
+- `update` 会重新应用整份 Compose 配置：改了 `ARTEX_PG_PORT` / `ARTEX_PG_VOLUME` / `NGINX_IMAGE` 等服务定义时，对应容器会被重建（数据卷保留）。已有 PostgreSQL 数据卷上改 `POSTGRES_PASSWORD` 不会修改数据库里已初始化的密码，需要另行执行 `ALTER USER`。
+- JWT 签名密钥存放在独立卷 `artex-host-state`（`ARTEX_STATE_VOLUME` 可改），更新重建 ARTEX 容器后登录态与 Basic Auth 验证 Cookie 不会失效。
+- PostgreSQL 数据卷默认名为 `artex-host-pgdata`。如需复用旧部署的数据卷，在 `.env` 设置 `ARTEX_PG_VOLUME=<旧卷名>`（可用 `docker volume ls` 查看）。PostgreSQL 密码会嵌入 DSN，只支持字母、数字和 `. _ ~ -`，`deploy.sh` 会自动生成并校验。
+- 生产部署与 Bridge 部署共用根目录 `.env`。若此前用 `.env.example` 的占位密码初始化过 Bridge 的 PostgreSQL 卷，`deploy.sh install` 会把占位密码替换成随机值；再切回 Bridge 部署时需要用旧密码或重建该卷。
+
+> Host 网络部署面向 Linux 宿主机；Docker Desktop 的 host 网络行为不同，仅建议本地验证。原有 Bridge 部署与本地编译部署方式保持可用，不受影响。
+
 ### 方式三：下载预编译二进制（Releases）
 
-到本仓库的 [Releases](https://github.com/RuoJi6/ARTEX/releases) 下载对应平台的 zip，解压后得到 `artex` + `start.sh`（Windows 为 `start.bat`）+ `skills/` + `config.example.json`。Linux ARM64（包括 ARM64 Kali）选择 `linux-arm64`，x86_64 选择 `linux-amd64`：
+到本仓库的 [Releases](https://github.com/nu11b1ade/ARTEX/releases) 下载对应平台的 zip，解压后得到 `artex` + `start.sh`（Windows 为 `start.bat`）+ `skills/` + `config.example.json`。Linux ARM64（包括 ARM64 Kali）选择 `linux-arm64`，x86_64 选择 `linux-amd64`：
 
 ```bash
 cp config.example.json config.json   # 填好 database 连接
@@ -167,11 +198,10 @@ cp config.example.json config.json   # 填好 database 连接
 ```bash
 # 1) 前端静态导出
 cd web && npm ci && npm run build:static && cd ..
-# 2) 创建内嵌目录
+# 2) 拷进内嵌目录
 mkdir -p server/webui/dist
-# 3) 拷进内嵌目录
 cp -r web/out/. server/webui/dist
-# 4) 编译（-tags embedui 才内嵌前端）
+# 3) 编译（-tags embedui 才内嵌前端）
 CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 ./start.sh
 ```
@@ -214,7 +244,7 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 在 **系统配置** 页（侧边栏「系统配置」→ `/system/settings`）的**版本与更新**卡片里，可以直接检查并安装新版本，无需登录服务器。
 
-本仓库构建的程序固定从 `RuoJi6/ARTEX` 的最新正式 GitHub Release 检查更新，跳过草稿和预发布版本。旧版官方程序仍指向原作者仓库，因此首次切换必须手动安装本仓库构建的程序；以后发布更高的三段式版本即可通过页面升级。仅推送 main 或 Git 标签但未发布 Release，不会产生可在线安装的新版本。
+本仓库构建的程序固定从 `nu11b1ade/ARTEX` 的最新正式 GitHub Release 检查更新，跳过草稿和预发布版本。旧版程序仍指向原作者仓库，因此首次切换必须手动安装本仓库构建的程序；以后发布更高的三段式版本即可通过页面升级。仅推送 main 或 Git 标签但未发布 Release，不会产生可在线安装的新版本。
 
 点「更新」后：下载当前平台的发布包 → 比对 Release 的 `SHA256SUMS` → 用 `-h` 冒烟测试新二进制 → 暂存为 `artex.new` → 程序退出，由 `start.sh` / `start.bat` 重新拉起并完成换装。页面会自动等到新版本上线后刷新。
 
@@ -228,17 +258,44 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 ### 维护者：通过 GitHub Actions 发布在线更新
 
-发布工作流为 `.github/workflows/release.yml`。推送正式标签会触发构建，也可在 Actions → release → Run workflow 中输入已存在的标签重新执行失败的发布。标签必须是 `v主版本.次版本.修订号`，例如下例的 `v0.3.17`；后续版本必须高于用户正在运行的版本。
+> **发布前确认 Docker Hub 凭据。** 在 Settings → Secrets and variables → Actions 中配置好 `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN` 与变量 `ARTEX_DOCKER_IMAGE`；缺少凭据时 docker 构建会先失败，不会产生 Release。向本仓库推送任何 `v*` 标签都会直接触发 Release 和 Docker 发布。
+
+发布工作流为 `.github/workflows/release.yml`。推送正式标签会触发构建，也可在 Actions → release → Run workflow 中输入已存在的标签重新执行失败的发布。标签必须是 `v主版本.次版本.修订号`，例如下例的 `v0.3.26`；后续版本必须高于用户正在运行的版本。
 
 ```bash
 git push origin main
-git tag v0.3.17
-git push origin v0.3.17
+git tag v0.3.26        # 示例版本号，发布前替换为实际版本
+git push origin v0.3.26
 ```
 
 工作流固定标签对应的提交，用 Node.js 22 导出前端，按照 `go.mod` 指定的 Go 版本编译内嵌前端的五个平台程序，并生成 ZIP 与 `SHA256SUMS`。AMD64 和 ARM64 镜像分别在 GitHub 原生 runner 上构建，连接临时 PostgreSQL 验证程序启动、版本和内嵌前端；两种架构都通过后发布多架构镜像的版本标签与 `latest`。镜像发布成功后上传完整 ZIP 和校验文件，最后公开 Release。已公开的同版本不允许覆盖，应发布新标签。
 
-维护者需在本仓库 Settings → Secrets and variables → Actions 中配置变量 `ARTEX_DOCKER_IMAGE`（Docker Hub 用户名/镜像名）和 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`（有镜像推送权限）。程序包通过 GitHub 自带 `GITHUB_TOKEN` 上传，镜像通过上述凭据推送到 Docker Hub。凭据只供工作流登录使用，不写入源码或镜像。镜像地址同时记录在 `.env.example` 和 Compose 默认值中。
+维护者需在本仓库 Settings → Secrets and variables → Actions 中配置变量 `ARTEX_DOCKER_IMAGE`（Docker Hub 用户名/镜像名，本仓库使用 `nullblade/artex`）和 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`（有镜像推送权限）。程序包通过 GitHub 自带 `GITHUB_TOKEN` 上传，镜像通过上述凭据推送到 Docker Hub。凭据只供工作流登录使用，不写入源码或镜像。镜像地址同时记录在 `.env.example` 和 Compose 默认值中。
+
+### 维护者：跟进原作者（上游）更新
+
+本仓库与上游 `RuoJi6/ARTEX` 共用提交历史和版本号。`.github/workflows/upstream-sync.yml` 每天检查上游最新 Release；如果该版本尚未包含在本仓库 `main` 中，会创建一个 `sync/upstream-<tag>` 分支并自动开 PR，由维护者审查后合并，不会直接修改 `main`。
+
+- 自动合并成功时，PR 包含一个上游合并提交；有冲突时，PR 分支指向上游标签提交，GitHub 会标记冲突，按提示在网页或本地解决后再合并。
+- 自动 PR 使用 GitHub 自带的 `GITHUB_TOKEN` 时不会触发常规 CI。若希望 PR 自动跑 CI，可配置 Secrets `UPSTREAM_SYNC_TOKEN`（PAT，含 `repo`、`workflow` 权限）；工作流会自动优先使用它。
+- 同一个版本已有开放 PR 时不会重复创建。合并后再运行工作流会直接跳过。
+
+手工同步时**不要**执行 `git fetch upstream --tags`：本仓库的 `v0.3.25` 等发布标签与上游同名但指向不同提交，直接拉取会提示 `would clobber existing tag`。使用命名空间引用：
+
+```bash
+git fetch --no-tags upstream "+refs/tags/v0.3.26:refs/remotes/upstream/tags/v0.3.26"
+git switch -c sync/upstream-v0.3.26 origin/main
+git merge --no-ff refs/remotes/upstream/tags/v0.3.26
+```
+
+也可以把上游标签固定映射到独立命名空间，之后直接 `git fetch upstream`：
+
+```bash
+git config remote.upstream.tagOpt --no-tags
+git config --add remote.upstream.fetch '+refs/tags/*:refs/remotes/upstream/tags/*'
+```
+
+合并上游版本后，按上一节流程发布一个高于 `main` 当前版本的标签（例如上游 `v0.3.26` 合并后发布本仓库 `v0.3.26`）。
 
 ### 已有 Docker 部署迁移到本仓库镜像
 
@@ -260,17 +317,17 @@ curl --fail http://127.0.0.1:8787/api/health
 docker compose logs --tail=50 artex
 ```
 
-继续使用原部署目录和 Compose 项目名称，确保 `./data`、`./skills` 和 PostgreSQL 数据卷仍指向原数据。迁移后程序从 `RuoJi6/ARTEX` 检查在线更新；后续可用页面更新程序或上述命令更新整个镜像。
+继续使用原部署目录和 Compose 项目名称，确保 `./data`、`./skills` 和 PostgreSQL 数据卷仍指向原数据。迁移后程序从 `nu11b1ade/ARTEX` 检查在线更新；后续可用页面更新程序或上述命令更新整个镜像。
 
 首次迁移已有 Docker 部署时，将已校验的新 ARM64 ZIP 解压到宿主机，备份原程序，然后只替换已有容器中的 `/app/artex`。例如现有容器名为 `artex-artex-1`：
 
 ```bash
 # 在下载目录运行；先按 SHA256SUMS 核对下载的 ZIP，再解压。
 sha256sum --ignore-missing --check SHA256SUMS
-unzip artex-0.3.17-linux-arm64.zip
+unzip artex-0.3.26-linux-arm64.zip
 sudo docker stop artex-artex-1
 sudo docker cp artex-artex-1:/app/artex ./artex-before-migration
-sudo docker cp ./artex-0.3.17-linux-arm64/artex artex-artex-1:/app/artex
+sudo docker cp ./artex-0.3.26-linux-arm64/artex artex-artex-1:/app/artex
 sudo docker start artex-artex-1
 curl --fail http://127.0.0.1:8787/api/health
 ```
@@ -284,17 +341,18 @@ cd ARTEX
 ./update.sh
 ```
 
-脚本先可选 `git pull` 拉取最新代码，再让你选 **① Docker 更新** 或 **② 本地编译更新**（与 `install.sh` 对应）：
+脚本先可选 `git pull` 拉取最新代码，再让你选 **① Docker 更新**、**② 本地编译更新** 或 **③ 生产部署更新**（与 `install.sh` 对应）：
 
 - **① Docker**：可指定目标镜像 tag（回车沿用 `.env` 的 `ARTEX_TAG`，缺省 `latest`）→ `docker compose pull` → `docker compose up -d`（换新镜像重启即自动迁移）。
 - **② 本地**：重建前端静态产物 → 重新编译 `./artex`（完成后重启进程生效）。
+- **③ 生产部署**：等同 `./deploy.sh update`，重建 ARTEX 容器并重载 Nginx，数据库与 `data/` 保留。
 
 ### 方式三：Docker Compose（手动）
 
 ```bash
 cd ARTEX
 git pull                       # 更新 compose / 脚本（可选）
-# 指定版本：在 .env 设 ARTEX_TAG=v0.3.17；不设则用 latest
+# 指定版本：在 .env 设 ARTEX_TAG=v0.3.26；不设则用 latest
 docker compose pull artex
 docker compose up -d artex     # 换新镜像重启 → 自动迁移 schema
 docker image prune -f          # 清理旧镜像（可选）
@@ -302,7 +360,7 @@ docker image prune -f          # 清理旧镜像（可选）
 
 ### 方式四：预编译二进制（Releases）
 
-到 [Releases](https://github.com/RuoJi6/ARTEX/releases) 下载新版本 zip，停掉旧进程后覆盖 `artex` 与 `skills/`（保留你的 `config.json` 与 `data/`），重启即可：
+到 [Releases](https://github.com/nu11b1ade/ARTEX/releases) 下载新版本 zip，停掉旧进程后覆盖 `artex` 与 `skills/`（保留你的 `config.json` 与 `data/`），重启即可：
 
 ```bash
 cp -r <解压目录>/skills ./ && cp <解压目录>/artex ./
@@ -351,7 +409,9 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 
 在 **系统配置 → HTTP Basic Auth** 中填写独立的验证用户名和密码，打开「启用访问验证」并点击「保存访问验证」。默认关闭，保存后立即生效，无需重启；密码至少 8 位、最多 72 字节，用户名不能包含冒号。
 
-开启后，访客先完成浏览器原生账号密码验证，再进入原有 ARTEX 登录页。网页、静态资源和 API 均受保护（MCP 服务端的 `/mcp` 端点除外：它不经过 Basic Auth，也不能用 Basic 账号密码访问，只认访问令牌，见下文「MCP 服务端」），`/api/health` 的 GET/HEAD 健康检查同样需要通过 Basic Auth，未认证时返回 `401`；通过后仅返回 `{"ok":true}`，不暴露应用名称或版本。健康检查不额外要求管理员 JWT；外部探针需要配置相同的 Basic Auth 凭据，例如使用 `curl --fail --user '验证用户名' http://127.0.0.1:8787/api/health` 并按提示输入密码。未启用 Basic Auth 时保留原有的无需凭据探活行为。版本号由需要管理员 JWT 的 `/api/version` 提供，启用访问验证后该接口同时受 Basic Auth 保护。未认证请求的 Basic Auth realm 使用通用名称 `Restricted`；通过访问验证仍需登录 ARTEX 才能使用业务 API。公网部署请通过 HTTPS 访问。
+生产部署（`./deploy.sh install`）会在首次启动时用环境变量 `ARTEX_BASIC_AUTH_USER` / `ARTEX_BASIC_AUTH_PASSWORD` 把访问验证种入数据库并启用，因此第一次访问就必须认证。种入只在数据库里没有 `auth.http_basic` 配置时发生，之后以 UI 为准，环境变量不会覆盖在 UI 中修改或关闭的配置。手工部署也可以设置这两个环境变量达到同样效果。
+
+开启后，访客先完成浏览器原生账号密码验证，再进入原有 ARTEX 登录页。网页、静态资源和 API 均受保护，`/api/health` 的 GET/HEAD 健康检查同样需要通过 Basic Auth，未认证时返回 `401`；通过后仅返回 `{"ok":true}`，不暴露应用名称或版本。健康检查不额外要求管理员 JWT；外部探针需要配置相同的 Basic Auth 凭据，例如使用 `curl --fail --user '验证用户名' http://127.0.0.1:8787/api/health` 并按提示输入密码。未启用 Basic Auth 时保留原有的无需凭据探活行为。版本号由需要管理员 JWT 的 `/api/version` 提供，启用访问验证后该接口同时受 Basic Auth 保护。未认证请求的 Basic Auth realm 使用通用名称 `Restricted`；通过访问验证仍需登录 ARTEX 才能使用业务 API。公网部署请通过 HTTPS 访问。
 
 从仍使用 `/api/health` 读取版本的旧版网页升级到此版本时，旧页面可能无法自动判断升级完成；服务重启后手动刷新页面即可。新版网页的版本显示和升级轮询均使用 `/api/version`。
 
@@ -368,87 +428,11 @@ SET value = jsonb_set(value::jsonb, '{enabled}', 'false'::jsonb)::text,
 WHERE key = 'auth.http_basic';
 ```
 
-### MCP 服务端（供外部智能体编排任务）
-
-ARTEX 可以作为 MCP 服务端，让外部智能体（个人助手、bot 等）查看任务与漏洞、创建任务、暂停或恢复任务。
-
-注意区分：「系统 → MCP」页面管理的是 ARTEX 自己的 agent **去调用**的外部 MCP；本文说的是 ARTEX **对外提供**的 MCP 端点。
-
-#### 开启与接入
-
-1. 「系统设置 → 系统与账号 → MCP 服务端」打开开关。默认关闭，关闭时 `/mcp` 返回 404。
-2. 在同一处「新建令牌」，选择权限范围。令牌只显示一次。
-3. 在智能体里配置：
-
-| 项 | 值 |
-| --- | --- |
-| 地址 | `https://<你的 ARTEX 地址>/mcp` |
-| 传输 | Streamable HTTP（无状态，只响应 `application/json`，不提供 SSE，不支持 stdio） |
-| 鉴权 | 请求头 `Authorization: Bearer artex_mcp_...` |
-
-```bash
-curl -s https://artex.example.com/mcp \
-  -H 'Authorization: Bearer artex_mcp_xxx' -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-```
-
-#### 无法使用 HTTP Basic Auth
-
-`/mcp` **不经过** HTTP Basic Auth 验证，也**不接受** Basic 账号密码、ARTEX 登录密码或管理员登录后的 JWT，只认访问令牌。
-
-原因：一个 HTTP 请求只有一个 `Authorization` 头，外部智能体无法同时带上 Basic 凭证和 Bearer 令牌。因此：
-
-- 即使启用了 HTTP Basic Auth，`/mcp` 仍可直接凭访问令牌访问，Basic Auth 不会给它加一层保护。
-- 需要限制谁能连 `/mcp` 的话，请用下文的「来源白名单」，不要依赖 Basic Auth。
-- 公网暴露请使用 HTTPS，令牌是明文放在请求头里的。
-
-#### 来源白名单
-
-在「MCP 服务端」卡片的「来源白名单」里填写允许调用 `/mcp` 的来源地址，每行一个 IP 或 CIDR（如 `203.0.113.7`、`10.0.0.0/8`，支持 IPv6）。留空表示不限制来源。
-
-- 白名单在令牌之前检查：不在名单内的来源即使持有有效令牌也会被拒绝，返回 `403`，响应里带有服务器看到的来源地址，便于排查。
-- 白名单只作用于 `/mcp`，不影响网页和管理 API，填错不会把自己锁在后台之外。
-- **部署在反向代理之后**：此时直连地址永远是代理。需要把代理地址填进「可信代理」，ARTEX 才会改用 `X-Forwarded-For` 里的地址作为来源（从右往左取第一个不属于可信代理的地址）。不填可信代理时该请求头一律忽略，避免调用方伪造来源。代理需要把真实来源追加到该请求头，例如 nginx 的 `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`。
-- 卡片里会显示「服务器看到的你当前的来源地址」，可用来确认可信代理是否配置正确。
-
-#### 权限范围与工具
-
-令牌只能看到、调用它的权限范围内的工具。
-
-| 权限范围 | 工具 | 说明 |
-| --- | --- | --- |
-| `read` | `list_tasks` | 列出任务，可按 `company_id`、`category_id`、`status` 筛选 |
-| `read` | `get_task` | 单个任务的状态、运行时长、目标完成数、漏洞数；用它轮询进度 |
-| `read` | `get_task_graph` | 任务的探索图总览 |
-| `read` | `list_task_findings` | 任务的确认漏洞（不含原始请求/响应流量） |
-| `read` | `list_companies` / `list_task_categories` / `list_llm_profiles` | 建任务时可选的企业、分类、模型配置（不含 API Key） |
-| `task:create` | `spawn_task` | 新建并启动任务，可带 `company_ids`、`category_id` |
-| `task:control` | `pause_task` / `resume_task` / `add_task_hint` | 暂停、恢复、补充提示 |
-
-ARTEX 没有独立的「项目」实体。智能体说的“某个项目”对应某个企业或某个任务分类下的一组任务。
-
-不会暴露的能力：建/改自定义工具、MCP、skill，workspace 文件读写，LLM 密钥，系统设置。
-
-#### 令牌的限制项
-
-- **限定企业**：勾选后，令牌只能在这些企业下建任务（必须带 `company_ids`，且目标地址须归属这些企业的范围），也只能看到、控制这些企业下的任务，其余任务对它表现为不存在。这是把任务绑定到企业的资产范围，不是网络层拦截；要硬性限制任务能访问什么，请配合资产拦截规则。
-- **未结束任务上限**：该令牌创建的、尚未结束的任务数（含暂停和排队）。
-- **每小时建任务上限**：按该令牌过去一小时创建的任务数计，任务删除后仍计入。
-- **有效期**与**吊销**：吊销立即生效，不可恢复。
-
-#### 审计
-
-每次工具调用都会记录：令牌、工具、参数、是否成功、失败原因、来源地址、时间，包括因权限不足被拒绝的调用。在设置页的「调用审计」查看，保留最近 20000 条。
-
-#### 安全提示
-
-- 创建任务会对目标发起真实的安全测试，只把 `task:create` 令牌交给可信的智能体，并尽量限定企业、设置限额。
-- 任务描述、漏洞摘要等返回内容可能包含来自被测目标的文本，对智能体而言是不可信输入，可能夹带提示注入。
-- 带 `Origin` 头的跨源浏览器请求会被拒绝（403），`/mcp` 不发送 CORS 头。
-
 ### 反向代理部署（HTTPS / 只开放 443）
 
 前端和 API/SSE 都由同一个后端端口（默认 `:8787`）提供，实时活动流默认走**同源**地址，因此**无需配置 `NEXT_PUBLIC_SSE_BASE`**，公网只开放 443、把 8787 留在内网即可。
+
+> `./deploy.sh install` 已自动生成并校验 Nginx 配置（见上文「生产部署」）。以下是使用自有 Nginx 或已有反向代理时的手工示例。
 
 SSE 是长连接 + 持续推送，反代**必须关闭缓冲**，否则浏览器能连上却收不到事件（表现为活动流一直转圈）。Nginx 示例：
 
@@ -538,7 +522,7 @@ server {
 
 ## 系统技术架构
 
-ARTEX 是一套 **LLM 多 agent 驱动的自主渗透系统**：Go 单体后端（内嵌 Next.js 前端）+ PostgreSQL，agent 能力由 [`norma`](https://github.com/Autumn-27/norma) SDK 提供（`agentcore` / `tool` / `permission` / `harness` / `memory` / `transcript`）。核心是**双图架构**，以及围绕它的两条自主性机制：**worker 间过程级信息交换**与 **planner 多轮共享 todolist 稳定攻击链路**。
+ARTEX 是一套 **LLM 多 agent 驱动的自主渗透系统**：Go 单体后端（内嵌 Next.js 前端）+ PostgreSQL，agent 能力由 [`norma`](https://github.com/nu11b1ade/Norma) SDK 提供（上游为 [Autumn-27/norma](https://github.com/Autumn-27/norma)，本仓库使用二次开发版本 `v0.4.3`；`agentcore` / `tool` / `permission` / `harness` / `memory` / `transcript`）。核心是**双图架构**，以及围绕它的两条自主性机制：**worker 间过程级信息交换**与 **planner 多轮共享 todolist 稳定攻击链路**。
 
 ### 总体分层
 
@@ -722,48 +706,133 @@ flowchart TB
 https://github.com/oritera/Cairn
 
 
-## 许可与免责声明
+## 许可
 
 ### 开源协议
 
-本项目 Fork 自 [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX)，保留原始提交历史与上游版权归属，现由 [ChainReactors](https://www.chainreactors.ai) 维护。本项目在个人学习与教育研究场景下采用 **GNU Affero General Public License v3.0（AGPL-3.0）** 授权，完整条款见仓库根目录的 [LICENSE](LICENSE) 文件。
+本项目采用 **GNU Affero General Public License v3.0（AGPL-3.0）** 授权，完整条款见仓库根目录的 [LICENSE](LICENSE) 文件。
 
-这意味着任何人都可以自由使用、修改和分发本项目，但**衍生作品必须同样以 AGPL-3.0 开源**；特别地，**若你修改本项目并通过网络（如部署为在线服务）向用户提供，也必须向这些用户公开对应的完整源码**。
+## MCP 服务端（供外部智能体编排任务）
 
-**商业使用与合作**：如希望在商业或闭源环境中使用本项目且不受 AGPL-3.0 开源义务限制，请联系 [business@chainreactors.ai](mailto:business@chainreactors.ai) 获取商业授权或洽谈合作。
+ARTEX 可以作为 MCP 服务端，让外部智能体（个人助手、bot 等）查看任务与漏洞、创建任务、暂停或恢复任务。
 
-**贡献声明**：提交 Pull Request 即表示你同意你的贡献可同时在 AGPL-3.0 与本项目的商业许可下使用。
+注意区分：「系统 → MCP」页面管理的是 ARTEX 自己的 agent **去调用**的外部 MCP；本文说的是 ARTEX **对外提供**的 MCP 端点。
 
-**ARTEX (forked from [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX)), maintained by [ChainReactors](https://www.chainreactors.ai)**
+#### 开启与接入
 
-> ⚠️ **重要提示**：开源协议本身不限制软件的使用用途。以下的「使用限制」与「免责声明」是作者对使用者的额外约定与郑重声明，请务必遵守。
+1. 「系统设置 → 系统与账号 → MCP 服务端」打开开关。默认关闭，关闭时 `/mcp` 返回 404。
+2. 在同一处「新建令牌」，选择权限范围。令牌只显示一次。
+3. 在智能体里配置：
 
-**ARTEX 仅供个人学习、代码研究与本地技术验证使用，不得用于对任何线上系统或网站发起实际测试。**
+| 项 | 值 |
+| --- | --- |
+| 地址 | `https://<你的 ARTEX 地址>/mcp` |
+| 传输 | Streamable HTTP（无状态，只响应 `application/json`，不提供 SSE，不支持 stdio） |
+| 鉴权 | 请求头 `Authorization: Bearer artex_mcp_...` |
 
-### 允许使用范围
+```bash
+curl -s https://artex.example.com/mcp \
+  -H 'Authorization: Bearer artex_mcp_xxx' -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
 
-- 仅可用于**阅读、学习与研究本项目源码**，以及在**本地隔离环境**中进行技术原理验证；
-- 适用于个人学习、学术研究、代码审阅等非攻击性用途。
+#### 无法使用 HTTP Basic Auth
 
-### 禁止事项
+`/mcp` **不经过** HTTP Basic Auth 验证，也**不接受** Basic 账号密码、ARTEX 登录密码或管理员登录后的 JWT，只认访问令牌。
 
-- **严禁使用本工具对任何网站、线上服务或联网系统发起扫描、探测、利用或攻击**（无论是否获得授权、是否为自有资产）；
-- 严禁将本工具用于任何实际的渗透测试、攻防对抗或生产环境；
-- 严禁将本工具用于非法入侵、数据窃取、勒索、拒绝服务或任何破坏性、犯罪性活动；
-- 严禁利用本工具从事违反所在国家/地区法律法规的行为。
+原因：一个 HTTP 请求只有一个 `Authorization` 头，外部智能体无法同时带上 Basic 凭证和 Bearer 令牌。因此：
 
-### 合规责任
+- 即使启用了 HTTP Basic Auth，`/mcp` 仍可直接凭访问令牌访问，Basic Auth 不会给它加一层保护。
+- 需要限制谁能连 `/mcp` 的话，请用下文的「来源白名单」，不要依赖 Basic Auth。
+- 公网暴露请使用 HTTPS，令牌是明文放在请求头里的。
 
-使用者须自行遵守所在国家/地区关于网络安全、数据保护与计算机犯罪的全部法律法规（在中国大陆包括但不限于《网络安全法》《数据安全法》《个人信息保护法》及相关司法解释）。**因使用本工具产生的一切法律责任与后果，均由使用者自行承担。**
+#### 来源白名单
 
-### 免责声明
+在「MCP 服务端」卡片的「来源白名单」里填写允许调用 `/mcp` 的来源地址，每行一个 IP 或 CIDR（如 `203.0.113.7`、`10.0.0.0/8`，支持 IPv6）。留空表示不限制来源。
 
-本项目按“现状（AS IS）”提供，不附带任何明示或默示的担保。作者及贡献者不对使用本工具（无论使用方式是否得当）所导致的任何直接或间接损失、数据丢失、系统损坏或法律纠纷承担责任。**下载、安装或使用本项目，即表示你已阅读、理解并同意上述全部条款。**
+- 白名单在令牌之前检查：不在名单内的来源即使持有有效令牌也会被拒绝，返回 `403`，响应里带有服务器看到的来源地址，便于排查。
+- 白名单只作用于 `/mcp`，不影响网页和管理 API，填错不会把自己锁在后台之外。
+- **部署在反向代理之后**：此时直连地址永远是代理。需要把代理地址填进「可信代理」，ARTEX 才会改用 `X-Forwarded-For` 里的地址作为来源（从右往左取第一个不属于可信代理的地址）。不填可信代理时该请求头一律忽略，避免调用方伪造来源。代理需要把真实来源追加到该请求头，例如 nginx 的 `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`。
+- 卡片里会显示「服务器看到的你当前的来源地址」，可用来确认可信代理是否配置正确。
 
-### 任务情报
+#### 权限范围与工具
 
-在「系统配置 → 任务情报」开启 **Agent 自动记录**，即可在任务详情的「任务情报」中集中查看凭据、重要线索和敏感数据。此开关默认关闭；关闭时不向 Agent 注入情报工具、附加字段或提示，不启动额外总结 Agent，已有记录仍可查看。开启会增加提示及上报的 Token 消耗，对后续 Agent 执行生效；已在运行的会话可能仍保留旧工具描述，关闭后服务端立即拒绝新增情报。
+令牌只能看到、调用它的权限范围内的工具。
 
-Worker 可调用 `record_intelligence`，或在 `record_fact` 的单条/批量事实中附带 `intelligence` 数组一起提交。`insert_assets` 本次提交的服务 `auth` 自动登记为未验证凭据，避免重复上报。任务、执行节点由系统绑定，记录需要真实来源证据；获取凭据不等于登录成功。
+| 权限范围 | 工具 | 说明 |
+| --- | --- | --- |
+| `read` | `list_tasks` | 列出任务，可按 `company_id`、`category_id`、`status` 筛选 |
+| `read` | `get_task` | 单个任务的状态、运行时长、目标完成数、漏洞数；用它轮询进度 |
+| `read` | `get_task_graph` | 任务的探索图总览 |
+| `read` | `list_task_findings` | 任务的确认漏洞（不含原始请求/响应流量） |
+| `read` | `list_companies` / `list_task_categories` / `list_llm_profiles` | 建任务时可选的企业、分类、模型配置（不含 API Key） |
+| `task:create` | `spawn_task` | 新建并启动任务，可带 `company_ids`、`category_id` |
+| `task:control` | `pause_task` / `resume_task` / `add_task_hint` | 暂停、恢复、补充提示 |
 
-页面支持分类、标题/上报者搜索、状态筛选、分页、状态更新及来源查看。凭据、敏感数据的正文和来源证据直接展示在列表及详情中，无需额外点击显示。直接关联任务的记录标明继承且只读；在资产页选择一项资产后点击「关联情报」可查看同一份记录。情报随任务归档、恢复和删除；新版归档格式为 v4，仍支持读取 v1–v3。此功能不自动补提取历史会话。
+ARTEX 没有独立的「项目」实体。智能体说的“某个项目”对应某个企业或某个任务分类下的一组任务。
+
+不会暴露的能力：建/改自定义工具、MCP、skill，workspace 文件读写，LLM 密钥，系统设置。
+
+#### 令牌的限制项
+
+- **限定企业**：勾选后，令牌只能在这些企业下建任务（必须带 `company_ids`，且目标地址须归属这些企业的范围），也只能看到、控制这些企业下的任务，其余任务对它表现为不存在。这是把任务绑定到企业的资产范围，不是网络层拦截；要硬性限制任务能访问什么，请配合资产拦截规则。
+- **未结束任务上限**：该令牌创建的、尚未结束的任务数（含暂停和排队）。
+- **每小时建任务上限**：按该令牌过去一小时创建的任务数计，任务删除后仍计入。
+- **有效期**与**吊销**：吊销立即生效，不可恢复。
+
+#### 审计
+
+每次工具调用都会记录：令牌、工具、参数、是否成功、失败原因、来源地址、时间，包括因权限不足被拒绝的调用。在设置页的「调用审计」查看，保留最近 20000 条。
+
+#### 安全提示
+
+- 创建任务会对目标发起真实的安全测试，只把 `task:create` 令牌交给可信的智能体，并尽量限定企业、设置限额。
+- 任务描述、漏洞摘要等返回内容可能包含来自被测目标的文本，对智能体而言是不可信输入，可能夹带提示注入。
+- 带 `Origin` 头的跨源浏览器请求会被拒绝（403），`/mcp` 不发送 CORS 头。
+
+### 反向代理部署（HTTPS / 只开放 443）
+
+前端和 API/SSE 都由同一个后端端口（默认 `:8787`）提供，实时活动流默认走**同源**地址，因此**无需配置 `NEXT_PUBLIC_SSE_BASE`**，公网只开放 443、把 8787 留在内网即可。
+
+SSE 是长连接 + 持续推送，反代**必须关闭缓冲**，否则浏览器能连上却收不到事件（表现为活动流一直转圈）。Nginx 示例：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name your.domain.com;
+    # ssl_certificate / ssl_certificate_key ...
+
+    location / {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # SSE 关键项：关缓冲、长超时、HTTP/1.1
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+    }
+
+    # 一键备份 / 恢复：允许大体积备份流式上传与下载，避免触发默认 1m 限制与请求体缓冲
+    location /api/system/backup/ {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        client_max_body_size 0;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+    }
+}
+```
+
+> 仅当 SSE 需要走与页面不同的来源（如独立子域）时，才在**构建期**设置 `NEXT_PUBLIC_SSE_BASE`（该变量在 `next build` 时固化进静态包，容器运行时再设无效）。
+
+---

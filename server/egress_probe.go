@@ -23,7 +23,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/httpidentity"
+	"github.com/Autumn-27/artex/netprofile"
 	"github.com/Autumn-27/artex/traffic"
 )
 
@@ -306,7 +306,7 @@ func probeOne(ctx context.Context, client *http.Client, target string) (string, 
 	if err != nil {
 		return "", err
 	}
-	httpidentity.Apply(req)
+	netprofile.Navigate(req)
 
 	resp, err := client.Do(req)
 	if err != nil {

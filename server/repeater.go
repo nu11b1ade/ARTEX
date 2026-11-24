@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/httpidentity"
+	"github.com/Autumn-27/artex/netprofile"
 )
 
 const (
@@ -143,7 +143,7 @@ func (s *Server) sendRepeater(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.URL = target.requestURL()
-	httpidentity.Apply(req)
+	netprofile.Apply(req)
 	for key, value := range in.Headers {
 		name := strings.TrimSpace(key)
 		if name == "" {

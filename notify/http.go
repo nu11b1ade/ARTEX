@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Autumn-27/artex/netprofile"
 )
 
 // allowLocalTargets 决定是否允许把消息投递到环回 / 链路本地地址。
@@ -148,6 +150,9 @@ func doJSON(ctx context.Context, method, url string, headers map[string]string, 
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	}
+	// 渠道没配 UA/Accept 时补浏览器默认值，避免把 Go-http-client/1.1
+	// 暴露给 IM/Webhook 服务端；管理员配置的自定义头优先。
+	netprofile.Apply(req)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}

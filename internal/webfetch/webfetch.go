@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/internal/httpidentity"
+	"github.com/Autumn-27/artex/netprofile"
 	actool "github.com/Autumn-27/norma/tool"
 	"golang.org/x/net/html"
 )
@@ -36,10 +37,13 @@ func New(cfg actool.WebFetchConfig) actool.CoreTool {
 
 const maxFetchBytes = 2 << 20 // 2 MiB
 
+type userAgentContextKey struct{}
+
 // newFetchClient returns an HTTP client honoring the proxy / TLS config.
 func newFetchClient(cfg actool.WebFetchConfig) *http.Client {
-	tr := &http.Transport{}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
 	if cfg.Proxy != "" {
+		tr.Proxy = nil
 		if pu, err := url.Parse(cfg.Proxy); err == nil {
 			tr.Proxy = http.ProxyURL(pu)
 		}
@@ -60,7 +64,11 @@ func newFetchClient(cfg actool.WebFetchConfig) *http.Client {
 			}
 		}
 	}
-	return &http.Client{Transport: tr}
+	tr.GetProxyConnectHeader = func(ctx context.Context, _ *url.URL, _ string) (http.Header, error) {
+		ua, _ := ctx.Value(userAgentContextKey{}).(string)
+		return http.Header{"User-Agent": []string{ua}}, nil
+	}
+	return &http.Client{Transport: tr, CheckRedirect: netprofile.BrowserCheckRedirect}
 }
 
 // proxyLikelyErr reports whether a fetch error is the kind a recording/MITM proxy
@@ -147,19 +155,22 @@ func webFetchRunner(cfg actool.WebFetchConfig) func(context.Context, json.RawMes
 		}
 		cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		req, err := http.NewRequestWithContext(cctx, http.MethodGet, in.URL, nil)
+		userAgent := httpidentity.UserAgent()
+		requestCtx := context.WithValue(cctx, userAgentContextKey{}, userAgent)
+		req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, in.URL, nil)
 		if err != nil {
 			return actool.Errorf("Error: " + err.Error()), nil
 		}
-		userAgent := httpidentity.UserAgent()
 		req.Header.Set("User-Agent", userAgent)
+		netprofile.BrowserNavigate(req)
 		resp, err := client.Do(req)
 		// One direct retry when the proxied attempt failed for a proxy-caused reason.
 		// A non-proxy error (bad host, caller timeout/cancel) is returned as-is — a
 		// direct retry wouldn't fix it. The direct response is NOT captured by the proxy.
 		if err != nil && direct != nil && proxyLikelyErr(err) {
-			if r2, e2 := http.NewRequestWithContext(cctx, http.MethodGet, in.URL, nil); e2 == nil {
+			if r2, e2 := http.NewRequestWithContext(requestCtx, http.MethodGet, in.URL, nil); e2 == nil {
 				r2.Header.Set("User-Agent", userAgent)
+				netprofile.BrowserNavigate(r2)
 				if resp2, err2 := direct.Do(r2); err2 == nil {
 					resp, err = resp2, nil
 				} else {

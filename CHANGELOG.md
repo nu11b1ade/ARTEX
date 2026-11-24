@@ -4,7 +4,13 @@
 
 ## [Unreleased]
 
-## [0.3.31] - 2026-11-23
+### 部署与发布维护
+
+- 迁移至 `nu11b1ade/ARTEX`，基于 `RuoJi6/ARTEX` v0.3.25 正式版本，保留原始提交历史。
+- Norma 依赖切换到 `nu11b1ade/Norma` 的 `v0.4.3` 正式发布版本。
+- Docker 镜像迁移到 Docker Hub `nullblade/artex`；移除 Vercel 在线 Demo 部署链路。
+
+## [0.3.31] - 2026-11-24
 
 ### 新增与改进
 
@@ -13,19 +19,30 @@
 - 新增发现页历史漏洞一键清理功能（#157）：支持按「全部 / 当前筛选 / 已勾选」范围通过 `DELETE /api/exploration/findings` 原子删除漏洞记录及其来源探索节点、复测记录和归并关系，命中归档或软删中任务时自动拦截返回 409。
 - 支持热更新运行中任务的 Worker 并发（#171）：任务详情可设置 0（跟随全局）或 1–50；全局工作并发与 Worker 池变更会同步至跟随全局的任务。增容立即补起 Worker，缩容等待当前意图完成后退出，不中断正在执行的工作；详情展示实际存活 Worker 数与目标数。配置持久化，重启恢复时沿用。
 - `PATCH /api/tasks/{id}` 新增 `worker_count`；任务接口返回 `worker_actual_count`（存活池循环，含缩容等待中的 Worker）与 `worker_target_count`（有效目标数），与 `in_flight`（执行中意图数）区分。
-- 更新 README，补充 ChainReactors 品牌标识、上游 `Autumn-27/ARTEX` 分支说明及商业授权与贡献协议提示。
+- 更新 README，补充备份迁移说明及上游 ChainReactors 维护、商业授权与贡献许可说明的链接。
 
 ### 修复
 
 - 修复运行中任务仍使用旧 Worker 池模型配置的问题（#141）：即使并发数和 slot 名称不变，保存新的 profile 绑定也会替换运行时 Worker；旧配置不可用的空闲 Worker 立即退出，正在执行的 Worker 完成当前意图后切换，新意图不再由旧绑定领取。任务模型链不覆盖显式 Worker 池绑定，历史 blocked 意图不自动重跑。
 - 修复请求重发器（Repeater）将原始请求目标重新解析并规范化 URL 的问题（#163）：前后端拆分 scheme/authority 与原始 request-target，避免查询串特殊字符被自动百分号编码或 `../` 路径段被折叠。
 
-## [0.3.30] - 2026-11-14
+### 二开兼容
+
+- Repeater 在保留原始 request-target 的同时沿用 `netprofile.Apply`，保留现有浏览器请求头、显式覆盖和 UA 配置。
+- 保留 MCP 服务端、Norma 二开依赖、Docker Hub 发布源、部署脚本与镜像内 UV/UVX、JADX、Apktool、vulnx 工具。
+- 两种 Compose 部署透传 `GEMINI_API_KEY`；生产 Nginx 模板对备份接口启用大包流式上传。
+
+## [0.3.30] - 2026-11-21
 
 ### 新增与改进
 
 - 新增 MCP 服务端：外部智能体可通过 `/mcp`（Streamable HTTP）查看任务与漏洞、创建任务、暂停/恢复任务及补充提示。提供访问令牌的权限范围、企业限制、任务限额、有效期和吊销，以及调用审计、来源 IP/CIDR 白名单与可信代理配置。默认关闭；该端点使用独立访问令牌认证，不使用 HTTP Basic Auth。
 - 统一出站 HTTP 请求标识：Go 请求与两个 Python 采集模板从 20 个标准桌面浏览器 User-Agent 中随机选择，保留环境变量和显式请求头覆盖，同一请求的重定向与重试复用选定值。此变化仅涉及 HTTP 请求头。
+
+### 二开兼容
+
+- 保留统一浏览器配套请求头、Norma 二开依赖、自更新源及部署工具；WebFetch 保留浏览器 CONNECT UA、与所选 UA 一致的 Client Hints、可信上下文头及跨站 Referer 保护。
+- Python 采集模板保留现有请求头与 gzip/deflate 解压，显式空 UA 仍可省略。
 
 ### 修复
 
@@ -42,6 +59,7 @@
 
 ### 修复
 
+- 同步上游时保留二开统一出站请求头，出口 IP 探测继续使用 `netprofile.Navigate`，不恢复旧探测 UA。
 - 无成果检查与漏洞写入串行化，并在同一事务内重新计算独立漏洞数量，避免临界时刻已达到成果要求的任务被误停止。
 - 旁路问答摘要为空、被截断或过长时自动重试一次，并细分失败原因；失败摘要不写入缓存，重试计入原有调用次数、用量及超时限制。
 
